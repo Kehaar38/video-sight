@@ -1,0 +1,47 @@
+
+このディレクトリは、プロジェクト固有のライブラリ（非公開ライブラリ）を配置するためのものです。
+PlatformIO はそれらを静的ライブラリとしてコンパイルし、実行ファイルにリンクします。
+
+各ライブラリのソースコードは、それぞれ別のディレクトリに配置してください。
+（`lib/your_library_name/[Code]`）
+
+たとえば、以下の `Foo` と `Bar` というサンプルライブラリの構成を参照してください。
+
+|--lib
+|  |
+|  |--Bar
+|  |  |--docs
+|  |  |--examples
+|  |  |--src
+|  |     |- Bar.c
+|  |     |- Bar.h
+|  |  |- library.json （任意。カスタムビルドオプションなどに使用）
+|  |                     https://docs.platformio.org/page/librarymanager/config.html
+|  |
+|  |--Foo
+|  |  |- Foo.c
+|  |  |- Foo.h
+|  |
+|  |- README --> このファイル
+|
+|- platformio.ini
+|--src
+   |- main.c
+
+`Foo` と `Bar` を使用する `src/main.c` の内容例:
+```
+#include <Foo.h>
+#include <Bar.h>
+
+int main (void)
+{
+  ...
+}
+
+```
+
+PlatformIO の Library Dependency Finder は、プロジェクトのソースファイルを走査して、
+依存ライブラリを自動的に検出します。
+
+PlatformIO Library Dependency Finder の詳細:
+- https://docs.platformio.org/page/librarymanager/ldf.html
