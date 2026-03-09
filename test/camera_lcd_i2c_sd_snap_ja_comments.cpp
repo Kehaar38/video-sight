@@ -7,7 +7,7 @@
 #include <Adafruit_ST7789.h>
 #include "esp_camera.h"
 
-// ===== LCD pin assignment (from docs/videosight_hardware_config_for_xiao_coding.md) =====
+// ===== LCDのピン割り当て（docs/videosight_hardware_config_for_xiao_coding.mdより） =====
 static constexpr int PIN_LCD_RST = 2;    // D1 / GPIO2
 static constexpr int PIN_LCD_BL = 43;    // D6 / GPIO43
 static constexpr int PIN_LCD_DC = 42;    // D11 / GPIO42
@@ -15,23 +15,23 @@ static constexpr int PIN_LCD_CS = 41;    // D12 / GPIO41
 static constexpr int PIN_SPI_SCK = 7;    // D8 / GPIO7
 static constexpr int PIN_SPI_MOSI = 9;   // D10 / GPIO9
 static constexpr int PIN_SPI_MISO = 8;   // D9 / GPIO8
-static constexpr int PIN_SD_CS = 21;     // on-board SD CS
+static constexpr int PIN_SD_CS = 21;     // オンボードSDのCS
 
-// ===== LCD geometry =====
+// ===== LCDの表示サイズ =====
 static constexpr int LCD_W = 240;
 static constexpr int LCD_H = 280;
 static constexpr int VIDEO_W = 240;
 static constexpr int VIDEO_H = 240;
 static constexpr int VIDEO_X = 0;
 static constexpr int VIDEO_Y = (LCD_H - VIDEO_H) / 2;  // 20
-static constexpr int LCD_ROTATION = 2;                  // 0..3 (2 = 180deg)
+static constexpr int LCD_ROTATION = 2;                  // 0..3（2 = 180度回転）
 
 SPIClass lcdSpi(FSPI);
 Adafruit_ST7789 tft(&lcdSpi, PIN_LCD_CS, PIN_LCD_DC, PIN_LCD_RST);
 
-// ===== XIAO ESP32S3 Sense camera pin map (OV2640) =====
-// If your camera module revision is different and init fails,
-// update these pins to the board's camera pinout.
+// ===== XIAO ESP32S3 Sense カメラのピンマップ（OV2640） =====
+// カメラモジュールのリビジョン違いで初期化失敗する場合は、
+// 以下のピン定義を実機のピンマップに合わせて修正する。
 static constexpr int CAM_PWDN = -1;
 static constexpr int CAM_RESET = -1;
 static constexpr int CAM_XCLK = 10;
@@ -49,14 +49,14 @@ static constexpr int CAM_Y2 = 15;
 static constexpr int CAM_VSYNC = 38;
 static constexpr int CAM_HREF = 47;
 static constexpr int CAM_PCLK = 13;
-static constexpr int CAM_HMIRROR = 1;  // 0: normal, 1: mirrored
-static constexpr int CAM_VFLIP = 0;    // 0: normal, 1: flipped vertically
+static constexpr int CAM_HMIRROR = 1;  // 0: 通常, 1: 左右反転
+static constexpr int CAM_VFLIP = 0;    // 0: 通常, 1: 上下反転
 
 // ===== I2C InputDevice =====
 static constexpr int PIN_I2C_SDA = 5;                 // D4 / GPIO5
 static constexpr int PIN_I2C_SCL = 6;                 // D5 / GPIO6
 static constexpr uint8_t INPUT_I2C_ADDR = 0x12;
-static constexpr uint8_t INPUT_BIT_FRONT = 2;         // old "RIGHT" button bit
+static constexpr uint8_t INPUT_BIT_FRONT = 2;         // 旧RIGHTボタン相当ビット
 
 static bool g_frontPressed = false;
 static bool g_prevFrontPressed = false;
@@ -92,10 +92,10 @@ static bool saveRgb565AsBmp(const uint8_t *rgb565, int w, int h) {
   }
 
   const uint32_t pixelBytes = (uint32_t)w * (uint32_t)h * 2U;
-  const uint32_t headerBytes = 14U + 40U + 12U;  // BMP + DIB + RGB565 masks
+  const uint32_t headerBytes = 14U + 40U + 12U;  // BMPヘッダ + DIBヘッダ + RGB565マスク
   const uint32_t fileSize = headerBytes + pixelBytes;
 
-  // BMP file header (14 bytes)
+  // BMPファイルヘッダ（14バイト）
   file.write('B');
   file.write('M');
   writeLe32(file, fileSize);
@@ -103,10 +103,10 @@ static bool saveRgb565AsBmp(const uint8_t *rgb565, int w, int h) {
   writeLe16(file, 0);
   writeLe32(file, headerBytes);
 
-  // BITMAPINFOHEADER (40 bytes)
+  // BITMAPINFOHEADER（40バイト）
   writeLe32(file, 40);               // biSize
   writeLe32(file, (uint32_t)w);      // biWidth
-  writeLe32(file, (uint32_t)(-h));   // biHeight (top-down)
+  writeLe32(file, (uint32_t)(-h));   // biHeight（負値=top-down）
   writeLe16(file, 1);                // biPlanes
   writeLe16(file, 16);               // biBitCount
   writeLe32(file, 3);                // biCompression = BI_BITFIELDS
@@ -116,12 +116,12 @@ static bool saveRgb565AsBmp(const uint8_t *rgb565, int w, int h) {
   writeLe32(file, 0);                // biClrUsed
   writeLe32(file, 0);                // biClrImportant
 
-  // RGB565 masks (12 bytes)
-  writeLe32(file, 0xF800);           // red mask
-  writeLe32(file, 0x07E0);           // green mask
-  writeLe32(file, 0x001F);           // blue mask
+  // RGB565マスク（12バイト）
+  writeLe32(file, 0xF800);           // Rマスク
+  writeLe32(file, 0x07E0);           // Gマスク
+  writeLe32(file, 0x001F);           // Bマスク
 
-  // Pixel data
+  // 画素データ本体
   const size_t written = file.write(rgb565, pixelBytes);
   file.close();
   if (written != pixelBytes) {
@@ -142,10 +142,10 @@ static void updateInputDeviceState() {
   }
 
   const int8_t encDelta = (int8_t)Wire.read();
-  (void)encDelta;  // currently unused in this sample
+  (void)encDelta;  // このサンプルでは未使用
 
   const uint8_t b1 = (uint8_t)Wire.read();
-  const uint8_t buttons = (uint8_t)(b1 & 0x1F);  // lower 5 bits = button states
+  const uint8_t buttons = (uint8_t)(b1 & 0x1F);  // 下位5bit = ボタン状態
   g_frontPressed = (buttons & (1U << INPUT_BIT_FRONT)) != 0;
 }
 
@@ -254,8 +254,8 @@ void loop() {
   }
 
   if (fb->format == PIXFORMAT_RGB565 && fb->width == VIDEO_W && fb->height == VIDEO_H) {
-    // XIAO ESP32S3 Sense camera framebuffer is often byte-swapped for RGB565
-    // relative to Adafruit_ST7789 expectations. Swap each pixel bytes before draw.
+    // XIAO ESP32S3 SenseのフレームバッファはRGB565のバイト順が
+    // Adafruit_ST7789の期待順と異なることがあるため、描画前にスワップする。
     for (size_t i = 0; i + 1 < fb->len; i += 2) {
       const uint8_t hi = fb->buf[i];
       fb->buf[i] = fb->buf[i + 1];
