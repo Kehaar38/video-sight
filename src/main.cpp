@@ -29,6 +29,22 @@ static constexpr int LCD_ROTATION = 2;                  // 0..3 (2 = 180deg)
 SPIClass lcdSpi(FSPI);
 Adafruit_ST7789 tft(&lcdSpi, PIN_LCD_CS, PIN_LCD_DC, PIN_LCD_RST);
 
+class Rgb565Overlay : public Adafruit_GFX {
+ public:
+  Rgb565Overlay(int16_t w, int16_t h) : Adafruit_GFX(w, h) {}
+
+  void setBuffer(uint16_t *buf) { buf_ = buf; }
+
+  void drawPixel(int16_t x, int16_t y, uint16_t color) override {
+    if (!buf_) return;
+    if (x < 0 || y < 0 || x >= width() || y >= height()) return;
+    buf_[(size_t)y * (size_t)width() + (size_t)x] = color;
+  }
+
+ private:
+  uint16_t *buf_ = nullptr;
+};
+
 // ===== XIAO ESP32S3 Sense camera pin map (OV2640) =====
 // If your camera module revision is different and init fails,
 // update these pins to the board's camera pinout.
@@ -61,6 +77,7 @@ static constexpr uint8_t INPUT_BIT_FRONT = 2;         // old "RIGHT" button bit
 static bool g_frontPressed = false;
 static bool g_prevFrontPressed = false;
 static bool g_sdReady = false;
+static Rgb565Overlay g_overlay(VIDEO_W, VIDEO_H);
 
 static void writeLe16(File &f, uint16_t v) {
   f.write((uint8_t)(v & 0xFF));
@@ -216,35 +233,35 @@ static bool initSdCard() {
   return true;
 }
 
-static void drawMainModeGuide() {
+static void drawMainModeGuide(Adafruit_GFX &gfx) {
   // MainMode guide:
   // [▲▼]BRT
   // [F▶]SNAP
   // [F_HOLD▶]REC
   // [◀B]MENU
   const int x = 4;
-  const int y = VIDEO_Y + 4;
+  const int y = 4;
   const uint16_t c = ST77XX_WHITE;
 
   // 背景透過にするため、塗りつぶしは行わず文字と図形だけ重ね描きする。
-  tft.setTextColor(c);
-  tft.setTextSize(1);
+  gfx.setTextColor(c);
+  gfx.setTextSize(1);
 
   // 1行目: [▲▼]BRT
-  tft.setCursor(x + 2, y + 2);
-  tft.printf("[%c%c]BRT", 0x1E, 0x1F);  // ▲▼
+  gfx.setCursor(x + 2, y + 2);
+  gfx.printf("[%c%c]BRT", 0x1E, 0x1F);  // ▲▼
 
   // 2行目: [F▶]SNAP
-  tft.setCursor(x + 2, y + 12);
-  tft.printf("[F%c]SNAP", 0x10);  // ▶
+  gfx.setCursor(x + 2, y + 12);
+  gfx.printf("[F%c]SNAP", 0x10);  // ▶
 
   // 3行目: [F_HOLD▶]REC
-  tft.setCursor(x + 2, y + 22);
-  tft.printf("[F_HOLD%c]REC", 0x10);  // ▶
+  gfx.setCursor(x + 2, y + 22);
+  gfx.printf("[F_HOLD%c]REC", 0x10);  // ▶
 
   // 4行目: [◀B]MENU
-  tft.setCursor(x + 2, y + 32);
-  tft.printf("[%cB]MENU", 0x11);  // ◀
+  gfx.setCursor(x + 2, y + 32);
+  gfx.printf("[%cB]MENU", 0x11);  // ◀
 }
 
 static void drawStatus(const char *msg, uint16_t color) {
@@ -260,6 +277,7 @@ void setup() {
   delay(300);
 
   initLcd();
+  g_overlay.cp437(true);
   drawStatus("Init camera...", ST77XX_YELLOW);
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
 
@@ -293,8 +311,10 @@ void loop() {
       fb->buf[i] = fb->buf[i + 1];
       fb->buf[i + 1] = hi;
     }
+    // ガイドをメモリ上のフレームに重畳してから、LCDへ1回だけ転送する
+    g_overlay.setBuffer(reinterpret_cast<uint16_t *>(fb->buf));
+    drawMainModeGuide(g_overlay);
     tft.drawRGBBitmap(VIDEO_X, VIDEO_Y, reinterpret_cast<uint16_t *>(fb->buf), VIDEO_W, VIDEO_H);
-    drawMainModeGuide();
 
     updateInputDeviceState();
     const bool frontRisingEdge = (!g_prevFrontPressed && g_frontPressed);
