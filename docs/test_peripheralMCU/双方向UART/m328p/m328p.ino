@@ -1,9 +1,8 @@
 // PeripheralMCU (ATmega328P, 8MHz, 3.3V)
-// 片側UART版
 //
 // EventNode1:
 //   PD0 <- EventNode1 TX
-//   PD1 : 未使用（双方向版では EventNode1 RX 送信）
+//   PD1 -> EventNode1 RX
 //   PD2 <- EventNode1 EVENT
 //
 // UI:
@@ -18,9 +17,6 @@
 //   PB2 -> EVENT out
 //   PC4 -> SDA
 //   PC5 -> SCL
-//
-// 双方向版との差分が分かるように、関数構成はできるだけ維持している。
-// ただし EventNode1 へのコマンド送信は行わず、受信専用にしている。
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -44,6 +40,10 @@ static const uint8_t PIN_ENC_B = 9;  // PB1
 // ------------------------------
 static const uint8_t I2C_ADDR = 0x32;
 static const uint32_t UART_BAUD = 9600;
+
+static const uint8_t CMD_HEADER      = 0x55;
+static const uint8_t CMD_GET_EVENT   = 0x12;
+static const uint8_t CMD_CLEAR_EVENT = 0x13;
 
 static const uint8_t FRAME_HEADER = 0xA5;
 static const uint8_t FRAME_LEN = 11;
@@ -70,8 +70,14 @@ static const uint16_t BUTTON_DEBOUNCE_MS    = 20;
 
 // ------------------------------
 // エンコーダ設定
+// InputDevice と同じ考え方
 // ------------------------------
+
+// 1クリックあたりの有効遷移数
 static const int8_t ENC_STEPS_PER_NOTCH = 2;
+
+// 回転方向の符号反転
+// 向きが逆なら false にしてください
 static const bool ENC_DIR_REVERSE = true;
 
 // ------------------------------
@@ -166,6 +172,17 @@ bool queuePop() {
 }
 
 // ------------------------------
+// EventNode1 コマンド送信
+// ------------------------------
+void sendCommandHardware(uint8_t cmd) {
+  uint8_t csum = CMD_HEADER ^ cmd;
+  Serial.write(CMD_HEADER);
+  Serial.write(cmd);
+  Serial.write(csum);
+  Serial.flush();
+}
+
+// ------------------------------
 // 外部イベントフレーム解析
 // ------------------------------
 bool parseFrame(const uint8_t *buf, EventFrame &out, uint8_t srcPort) {
@@ -216,14 +233,17 @@ bool readFrameHardware(EventFrame &out, uint8_t srcPort) {
 
 // ------------------------------
 // EventNode1 サービス
-// 片側UART版では「問い合わせ」ではなく「受信待ち」
-// 双方向版との差分はここが本質
 // ------------------------------
 bool serviceNode1() {
-  // EVENT が LOW または UART にデータが溜まっていれば読む
-  if (digitalRead(PIN_NODE1_EVENT) != LOW && Serial.available() == 0) {
+  if (digitalRead(PIN_NODE1_EVENT) != LOW) {
     return false;
   }
+
+  while (Serial.available() > 0) {
+    Serial.read();
+  }
+
+  sendCommandHardware(CMD_GET_EVENT);
 
   EventFrame ev{};
   if (!readFrameHardware(ev, 1)) {
@@ -231,6 +251,7 @@ bool serviceNode1() {
   }
 
   queuePush(ev);
+  sendCommandHardware(CMD_CLEAR_EVENT);
   return true;
 }
 
@@ -268,6 +289,7 @@ void serviceButtons() {
 
 // ------------------------------
 // エンコーダ関連
+// InputDevice と同じ考え方
 // ------------------------------
 uint8_t readAB() {
   uint8_t a = digitalRead(PIN_ENC_A) ? 1 : 0;
@@ -275,9 +297,11 @@ uint8_t readAB() {
   return (uint8_t)((a << 1) | b);
 }
 
+// A/B の状態遷移から +1/-1 のクォドラチャステップを生成
 int8_t quadratureStep(uint8_t prevAB, uint8_t currAB) {
   const uint8_t t = (uint8_t)((prevAB << 2) | currAB);
 
+  // InputDevice と同じテーブル
   static const int8_t stepTable[16] = {
      0, -1, +1,  0,
     +1,  0,  0, -1,
@@ -318,8 +342,10 @@ void serviceEncoder() {
     return;
   }
 
+  // まずクォドラチャ生ステップを蓄積
   g_qstepAcc = (int8_t)(g_qstepAcc + qstep);
 
+  // 1クリック分に到達したら ±1 だけ加算
   if (ENC_STEPS_PER_NOTCH > 0) {
     while (g_qstepAcc >= ENC_STEPS_PER_NOTCH) {
       g_qstepAcc -= ENC_STEPS_PER_NOTCH;
@@ -352,7 +378,7 @@ void onI2cReceive(int count) {
       }
       if (ack & 0x02) {
         g_encDelta = 0;
-        // 途中経過 g_qstepAcc は保持
+        // 途中経過 g_qstepAcc は保持する
         g_status &= ~STATUS_ENCODER_PENDING;
       }
       if (ack & 0x04) {
@@ -456,7 +482,6 @@ void setup() {
   pinMode(PIN_VS_EVENT_OUT, OUTPUT);
   digitalWrite(PIN_VS_EVENT_OUT, HIGH);
 
-  // 片側UART版でも受信は HardwareSerial を使う
   Serial.begin(UART_BAUD);
 
   Wire.begin(I2C_ADDR);
@@ -473,7 +498,7 @@ void loop() {
   serviceEncoder();
 
   // EventNode1
-  if (digitalRead(PIN_NODE1_EVENT) == LOW || Serial.available() > 0) {
+  if (digitalRead(PIN_NODE1_EVENT) == LOW) {
     serviceNode1();
   }
 }
