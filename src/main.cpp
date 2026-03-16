@@ -8,7 +8,7 @@
 #include "esp_camera.h"
 
 // ===== LCD pin assignment (from docs/videosight_hardware_config_for_xiao_coding.md) =====
-static constexpr int PIN_LCD_RST = 44;    // D1 / GPIO2
+static constexpr int PIN_LCD_RST = 44;    // D7 / GPI44
 static constexpr int PIN_LCD_BL = 43;    // D6 / GPIO43
 static constexpr int PIN_LCD_DC = 42;    // D11 / GPIO42
 static constexpr int PIN_LCD_CS = 41;    // D12 / GPIO41
