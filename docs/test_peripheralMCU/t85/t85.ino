@@ -1,21 +1,21 @@
 // EventNode1 (ATtiny85, 8MHz, 3.3V)
-// 片側UART版
+// EVENT省略版
 //
 // PB0: UART TX -> PeripheralMCU
-// PB1: EVENT出力 -> PeripheralMCU（アクティブLOW）
+// PB1: 未使用（前回は EVENT出力）
 // PB2: タクトスイッチ入力
-// PB3: 未使用（双方向版では UART RX）
+// PB3: 未使用（前回は UART RX）
 // PB4: デバッグLED（任意）
 //
 // 動作:
 // - スイッチ変化を検知
-// - イベント発生時に自分でUARTフレームを送信
-// - EVENT線を短時間LOWにして PeripheralMCU に通知
+// - イベント発生時にUARTフレームを即送信
 //
-// 双方向版との差分:
-// - コマンド待ちなし
-// - イベント保持なし
-// - GET_EVENT / CLEAR_EVENT 処理なし
+// 前回片側UART版との差分:
+// - EVENT線を使わない
+// - setEventLine() 削除
+// - EVENT_HOLD_MS 削除
+// - PB1 は未使用
 
 #include <Arduino.h>
 #include <SoftwareSerial.h>
@@ -24,9 +24,9 @@
 // ピン定義
 // ------------------------------
 static const uint8_t PIN_UART_TX   = PB0;
-static const uint8_t PIN_EVENT_OUT = PB1;
+static const uint8_t PIN_UNUSED_1  = PB1;  // 前回は EVENT
 static const uint8_t PIN_SWITCH    = PB2;
-static const uint8_t PIN_UNUSED_RX = PB3;  // 差分を分かりやすくするため残す
+static const uint8_t PIN_UNUSED_2  = PB3;  // 前回は UART RX
 static const uint8_t PIN_LED       = PB4;
 
 // ------------------------------
@@ -48,22 +48,14 @@ static const uint8_t EVENT_TYPE_SWITCH_RELEASED = 0x03;
 static const uint16_t DEBOUNCE_MS        = 40;
 static const uint16_t RETRIGGER_GUARD_MS = 60;
 
-// EVENT線の保持時間
-static const uint16_t EVENT_HOLD_MS = 20;
-
 // SoftwareSerial
 // RX は未使用だが、コンストラクタ都合でダミー指定
-SoftwareSerial nodeSerial(PIN_UNUSED_RX, PIN_UART_TX);
+SoftwareSerial nodeSerial(PIN_UNUSED_2, PIN_UART_TX);
 
 // ------------------------------
 // イベント送信
 // ------------------------------
 uint8_t g_eventIdCounter = 0;
-
-// EVENT線制御
-void setEventLine(bool active) {
-  digitalWrite(PIN_EVENT_OUT, active ? LOW : HIGH);
-}
 
 // フレーム送信
 void sendEventFrame(uint8_t eventType, uint8_t meta0, uint8_t meta1, uint8_t flags) {
@@ -87,22 +79,13 @@ void sendEventFrame(uint8_t eventType, uint8_t meta0, uint8_t meta1, uint8_t fla
   }
   buf[10] = checksum;
 
-  // 送信前に EVENT を通知
-  setEventLine(true);
-
   for (uint8_t i = 0; i < sizeof(buf); ++i) {
     nodeSerial.write(buf[i]);
   }
   nodeSerial.flush();
-
-  delay(EVENT_HOLD_MS);
-  setEventLine(false);
 }
 
 void setup() {
-  pinMode(PIN_EVENT_OUT, OUTPUT);
-  setEventLine(false);
-
   pinMode(PIN_SWITCH, INPUT_PULLUP);
 
   pinMode(PIN_LED, OUTPUT);
