@@ -1,10 +1,10 @@
 // PeripheralMCU (ATmega328P, 8MHz, 3.3V)
-// 片側UART版
+// EventNode->Peripheral の EVENT線省略版
 //
 // EventNode1:
 //   PD0 <- EventNode1 TX
-//   PD1 : 未使用（双方向版では EventNode1 RX 送信）
-//   PD2 <- EventNode1 EVENT
+//   PD1 : 未使用（前回片側UART版でも未使用）
+//   PD2 : 未使用（前回は EventNode1 EVENT）
 //
 // UI:
 //   PD4 <- BTN_UP
@@ -19,8 +19,10 @@
 //   PC4 -> SDA
 //   PC5 -> SCL
 //
-// 双方向版との差分が分かるように、関数構成はできるだけ維持している。
-// ただし EventNode1 へのコマンド送信は行わず、受信専用にしている。
+// 前回片側UART版との差分:
+// - EventNode1 EVENT を使わない
+// - serviceNode1() 呼び出し条件は Serial.available() のみ
+// - それ以外は EventHub 抽象を維持
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -28,7 +30,7 @@
 // ------------------------------
 // ピン定義
 // ------------------------------
-static const uint8_t PIN_NODE1_EVENT   = 2;   // PD2
+// 前回は PIN_NODE1_EVENT = 2 を使用していたが、今回は未使用
 static const uint8_t PIN_VS_EVENT_OUT  = 10;  // PB2
 
 static const uint8_t PIN_BTN_UP    = 4;  // PD4
@@ -216,15 +218,10 @@ bool readFrameHardware(EventFrame &out, uint8_t srcPort) {
 
 // ------------------------------
 // EventNode1 サービス
-// 片側UART版では「問い合わせ」ではなく「受信待ち」
-// 双方向版との差分はここが本質
+// EVENT線が無いので UARTバッファ監視のみ
 // ------------------------------
 bool serviceNode1() {
-  // EVENT が LOW または UART にデータが溜まっていれば読む
-  if (digitalRead(PIN_NODE1_EVENT) != LOW && Serial.available() == 0) {
-    return false;
-  }
-
+  // loop 側で Serial.available() >= FRAME_LEN を保証する前提
   EventFrame ev{};
   if (!readFrameHardware(ev, 1)) {
     return false;
@@ -338,11 +335,9 @@ void serviceEncoder() {
 void onI2cReceive(int count) {
   if (count <= 0) return;
 
-  // 最初の1バイトはレジスタ番号
   g_regPointer = (uint8_t)Wire.read();
   count--;
 
-  // 書き込み付きの場合
   if (count > 0) {
     if (g_regPointer == REG_ACK_CLEAR) {
       uint8_t ack = (uint8_t)Wire.read();
@@ -352,7 +347,6 @@ void onI2cReceive(int count) {
       }
       if (ack & 0x02) {
         g_encDelta = 0;
-        // 途中経過 g_qstepAcc は保持
         g_status &= ~STATUS_ENCODER_PENDING;
       }
       if (ack & 0x04) {
@@ -438,9 +432,6 @@ void onI2cRequest() {
 }
 
 void setup() {
-  // EventNode
-  pinMode(PIN_NODE1_EVENT, INPUT_PULLUP);
-
   // ボタン
   pinMode(PIN_BTN_UP, INPUT_PULLUP);
   pinMode(PIN_BTN_DOWN, INPUT_PULLUP);
@@ -456,14 +447,13 @@ void setup() {
   pinMode(PIN_VS_EVENT_OUT, OUTPUT);
   digitalWrite(PIN_VS_EVENT_OUT, HIGH);
 
-  // 片側UART版でも受信は HardwareSerial を使う
+  // UART受信専用
   Serial.begin(UART_BAUD);
 
   Wire.begin(I2C_ADDR);
   Wire.onReceive(onI2cReceive);
   Wire.onRequest(onI2cRequest);
 
-  // 初期状態
   g_buttonState = readRawButtons();
 }
 
@@ -473,7 +463,8 @@ void loop() {
   serviceEncoder();
 
   // EventNode1
-  if (digitalRead(PIN_NODE1_EVENT) == LOW || Serial.available() > 0) {
+  // EVENT線が無いので、UARTバッファのみで受信判断
+  if (Serial.available() >= FRAME_LEN) {
     serviceNode1();
   }
 }
