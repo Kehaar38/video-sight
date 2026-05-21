@@ -2502,7 +2502,7 @@
 		)
 		(uuid "9273aa1a-c06a-4304-84ca-7d05bdddf9e0")
 	)
-	(label "IN"
+	(label "XIAO_3V3"
 		(at 168.91 53.34 180)
 		(effects
 			(font
@@ -2522,7 +2522,7 @@
 		)
 		(uuid "a4a231e3-14c4-4326-b4e1-3342841c2142")
 	)
-	(label "IN"
+	(label "XIAO_3V3"
 		(at 110.49 156.21 0)
 		(effects
 			(font
@@ -2532,7 +2532,7 @@
 		)
 		(uuid "a8693e92-6b70-40fd-b79d-5a7fbfd122b3")
 	)
-	(label "EN"
+	(label "PERIPH_EN"
 		(at 110.49 137.16 0)
 		(effects
 			(font
@@ -3805,7 +3805,7 @@
 				)
 			)
 		)
-		(property "Value" "R_QOD"
+		(property "Value" "1kΩ"
 			(at 226.06 58.166 90)
 			(effects
 				(font
@@ -4424,7 +4424,7 @@
 				(hide yes)
 			)
 		)
-		(property "Value" "+3V3"
+		(property "Value" "PERIPH_3V3"
 			(at 250.19 41.91 0)
 			(effects
 				(font
