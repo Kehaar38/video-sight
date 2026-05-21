@@ -1,0 +1,27 @@
+# KiCad generated files
+*-backups/
+*.kicad_prl
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*.sch-bak
+*.bak
+*.tmp
+fp-info-cache
+
+# Fabrication/output artifacts
+outputs/
+gerbers/
+bom/
+*.zip
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python/firmware build artifacts
+__pycache__/
+*.pyc
+.pio/
+build/
