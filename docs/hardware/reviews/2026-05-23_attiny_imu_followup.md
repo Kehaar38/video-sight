@@ -6,7 +6,7 @@ Reviewed pushed updates after:
 
 - adding ATtiny1616 UPDI/programming VCC selection,
 - adding the internal-pull-up note for the input devices,
-- updating IMU handling/test points,
+- adding IMU test points,
 - marking unused XIAO breakout camera I2C lines as NC.
 
 ## ATtiny1616 / UPDI
@@ -55,7 +55,7 @@ The input-device note `ATtiny internal pull-up enabled` is good. The switch/enco
 
 ## IMU / BNO055
 
-The IMU unused/support pins are now brought to test points:
+The IMU update added test points, not I2C pull-ups. The visible support pins are now brought to test points:
 
 ```text
 TP13 = IMU_2V8
@@ -66,9 +66,9 @@ TP16 = IMU_RESET
 
 This is useful for bring-up.
 
-### I2C pull-ups not visible in pushed schematic
+### I2C pull-ups still remain as a separate future check
 
-The screenshot and KiCad text currently do not show discrete I2C pull-up resistors such as:
+Because the IMU change was TP-only, discrete I2C pull-up resistors are still a separate design decision. The screenshot and KiCad text currently do not show board-side pull-up resistors such as:
 
 ```text
 I2C_SDA -> 4.7k -> PERIPH_3V3
@@ -100,7 +100,9 @@ Accepted:
 - IMU support/test points,
 - CAM_SDA/CAM_SCL NC marking.
 
-Recommended before layout:
+Still separate future check:
+
+- optional I2C pull-up resistors or a note that module-side pull-ups are used.
 
 1. Move/add the ATtiny 0.1µF decoupling capacitor to the `UPDI_VCC` / ATtiny VCC side of JP2.
 2. Add a clear JP2/J4 programming-power note.
