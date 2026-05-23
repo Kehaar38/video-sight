@@ -9,12 +9,13 @@ XIAO 3V3
   → TPS22919
   → PERIPH_3V3
       - LCD VCC
-      - LCD BL
       - BNO055 VCC
       - ATtiny1616 VCC
 ```
 
-ENは D6/GPIO43 から制御し、ENにプルダウンを入れて起動直後/DeepSleep中はOFFへ倒す。
+LCD_BLはD6/GPIO43で別制御する。
+
+ENは GPIO41/D12 pad から制御し、ENにプルダウンを入れて起動直後/DeepSleep中はOFFへ倒す。
 
 ## 確認した仕様
 

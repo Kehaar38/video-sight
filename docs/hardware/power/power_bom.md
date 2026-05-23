@@ -13,12 +13,14 @@ XIAO 3V3
   → TPS22919 load switch
   → PERIPH_3V3
       - LCD VCC
-      - LCD BL
       - BNO055 VCC
       - ATtiny1616 VCC
 
-D6/GPIO43
+GPIO41/D12 pad
   → TPS22919 EN
+
+D6/GPIO43
+  → LCD_BL
 
 BAT+
   → 470kΩ/220kΩ分圧
@@ -35,11 +37,11 @@ BAT+
 | Q1 | 1 | P-MOSFET | AO3401A | SOT-23 | 逆接保護 | Drain=SW後BAT側、Source=XIAO BAT側、Gate=GND抵抗。Digi-Key購入予定。 |
 | R1 | 1 | Gate-GND抵抗 | 1MΩ | 0603/0805 | Q1ゲートプルダウン | 物理ON時の常時消費約4.2µA。0805の方が手実装しやすい。 |
 | JP1 | 1 | 電流測定ジャンパ | 2pin header / solder jumper | 2.54mm or pad | BAT全体電流測定 | 外してテスター直列挿入。通常時はジャンパで短絡。 |
-| U1 | 1 | ロードスイッチ | TPS22919DCKR | DCK / SC-70-6系 | PERIPH_3V3制御 | XIAO 3V3からLCD/IMU/ATtinyへ供給。ENはD6。 |
+| U1 | 1 | ロードスイッチ | TPS22919DCKR | DCK / SC-70-6系 | PERIPH_3V3制御 | XIAO 3V3からLCD/IMU/ATtinyへ供給。ENはGPIO41。 |
 | R2 | 1 | ENプルダウン | 100kΩ | 0603/0805 | TPS22919 EN固定 | 起動直後/DeepSleep中に周辺電源OFFへ倒す。 |
 | C1 | 1 | 入力バイパス | 1µF | 0603/0805 X7R | TPS22919 VIN-GND | TPS22919近傍。データシート推奨値確認。 |
 | C2 | 1 | 出力バイパス | 1µF | 0603/0805 X7R | PERIPH_3V3安定化 | TPS22919 OUT近傍。突入/放電挙動を実測。 |
-| C3 | 1 | 周辺バルク | 47µF | 1206/電解/タンタル等 | PERIPH_3V3 | LCDバックライトや周辺負荷変動対策。低ESRセラミックならDCバイアス容量低下に注意。 |
+| C3 | 1 | 周辺バルク | 47µF | 1206/電解/タンタル等 | PERIPH_3V3 | LCD/IMU/ATtinyの負荷変動対策。低ESRセラミックならDCバイアス容量低下に注意。 |
 | C4 | 1 | XIAO 3V3側バルク | 47µF〜100µF | 1206/電解/タンタル等 | 3V3安定化 | XIAO 3V3から周辺ロードスイッチへ入る近くに配置。 |
 | C5-C8 | 4 | ローカルデカップリング | 0.1µF | 0603/0805 X7R | LCD/BNO055/ATtiny等 | 各モジュールVCC近く。既存モジュール搭載分があっても基板側に置けると安心。 |
 | R3 | 1 | バッテリー分圧上側 | 470kΩ | 0603/0805, 1%推奨 | BAT測定 | BAT+からADC点。常時接続。 |
@@ -50,7 +52,7 @@ BAT+
 | TP3 | 1 | テストポイント | XIAO_BAT | pad | XIAO BAT入力測定 | Q1/JP1後。 |
 | TP4 | 1 | テストポイント | 3V3 | pad | XIAO 3V3測定 | レギュレータ出力確認。 |
 | TP5 | 1 | テストポイント | PERIPH_3V3 | pad | 周辺電源測定 | TPS22919出力。DeepSleepで0Vになるか確認。 |
-| TP6 | 1 | テストポイント | PERIPH_EN | pad | D6/EN測定 | 起動/DeepSleepシーケンス確認。 |
+| TP6 | 1 | テストポイント | PERIPH_EN | pad | GPIO41/EN測定 | 起動/DeepSleepシーケンス確認。 |
 | TP7+ | 複数 | GNDテストポイント | GND | pad | 測定基準 | 各測定点近くに複数あると便利。 |
 | F1 | 0/1 | リセッタブルヒューズ | 0.5A〜1A hold目安 | 1206/1812等 | 短絡保護補助 | 保護回路付きセルを使うため任意。テスト基板では入れる価値あり。 |
 | D1 | 0/1 | TVS/ESD保護 | 5V以下系 | SMD | BAT入力保護 | 通常は任意。長い電池リードやESDが気になる場合。 |
@@ -88,7 +90,7 @@ R1 = 1MΩ
 R2 = 100kΩ pulldown
 ```
 
-D6未初期化時、DeepSleep時、リセット時にPERIPH_3V3をOFFへ倒す。
+GPIO41未初期化時、DeepSleep時、リセット時にPERIPH_3V3をOFFへ倒す。
 
 ### コンデンサ
 
