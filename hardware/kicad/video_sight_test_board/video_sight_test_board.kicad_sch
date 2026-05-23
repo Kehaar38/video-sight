@@ -11180,7 +11180,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "928af845-0900-4168-89d4-cfad488764cc")
-		(property "Reference" "U2"
+		(property "Reference" "U1"
 			(at 90.17 118.11 0)
 			(effects
 				(font
@@ -11246,7 +11246,7 @@
 		(instances
 			(project ""
 				(path "/1bc004cb-e275-41d9-96ac-81dd92544364"
-					(reference "U2")
+					(reference "U1")
 					(unit 1)
 				)
 			)
@@ -13482,22 +13482,20 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "d34e89d3-a84d-4dd2-b31e-82f241140a27")
-		(property "Reference" "U3"
-			(at 83.4233 191.77 0)
+		(property "Reference" "U2"
+			(at 81.28 191.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
 			)
 		)
 		(property "Value" "ATtiny1616-S"
-			(at 83.4233 194.31 0)
+			(at 81.28 194.31 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
 			)
 		)
 		(property "Footprint" "Package_SO:SOIC-20W_7.5x12.8mm_P1.27mm"
@@ -13591,7 +13589,7 @@
 		(instances
 			(project ""
 				(path "/1bc004cb-e275-41d9-96ac-81dd92544364"
-					(reference "U3")
+					(reference "U2")
 					(unit 1)
 				)
 			)
