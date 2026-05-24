@@ -160,6 +160,27 @@ The selected footprints are plausible, but they depend heavily on exact parts:
 
 Before ordering, compare to the actual part datasheets or the parts in hand.
 
+## User follow-up decisions
+
+After this review, the following project decisions were noted:
+
+- The custom footprints were downloaded from public sources. The repository is public, but third-party reuse is not a major goal for this project.
+- TPS22919, C3/C4, and BNO055 footprints were chosen based on actual parts/modules in hand, so mechanical fit is expected to be acceptable.
+- The IDC cable will be obtained before PCB order so the key orientation and straight-through pin mapping can be checked physically.
+- The bundled LCD cable terminates in a normal 2.54mm pin socket and can be reversed. For the final build, consider making a custom cable or keyed connection that fixes orientation.
+
+## Custom-footprint policy note
+
+If the downloaded footprints have a license that allows redistribution, committing a project-local `.pretty` library is ideal.
+
+If the license is unclear or redistribution is inconvenient, it is acceptable for this personal/prototype repository to keep them as local KiCad user-library footprints, but then the project is not fully reproducible from Git alone.
+
+For this project, the practical minimum is:
+
+- keep the exact source URL/package name for each custom footprint in a note,
+- export Gerbers from the same KiCad environment that has those footprints installed,
+- visually inspect the generated Gerber/pads before ordering.
+
 ## Summary
 
 Accepted as a test-board footprint baseline:
@@ -171,14 +192,14 @@ Accepted as a test-board footprint baseline:
 - SOT-23 AO3401A,
 - DNP status for R7/R8.
 
-Main blocker before a reproducible PCB project:
+Main reproducibility caveat:
 
-- custom footprints `@自分用:*` need to be committed into the repo or replaced with standard/library footprints.
+- custom footprints `@自分用:*` are local unless their source/license allows committing them or they are replaced by standard/library footprints.
 
 Main mechanical checks before PCB order:
 
 - TPS22919 DCK footprint pin mapping,
 - BNO055 module row spacing,
-- IDC key orientation,
-- LCD header orientation,
+- IDC key orientation using the actual cable,
+- LCD cable/header orientation or custom keyed cable plan,
 - switch/encoder exact part footprints.
