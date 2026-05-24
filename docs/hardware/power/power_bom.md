@@ -1,108 +1,95 @@
 # VIDEO SIGHT 電源周り 部品表ドラフト
 
+このファイルは電源周りだけの抜粋です。最新の全体BOMは次を参照してください。
+
+```text
+docs/hardware/test_board_bom.md
+```
+
+Source schematic: `hardware/kicad/video_sight_test_board/video_sight_test_board.kicad_sch`
+
 ## 前提構成
 
 ```text
-保護回路付き18650
-  → 物理電源スイッチ
-  → AO3401A P-MOSFET逆接保護
-  → BAT電流測定ジャンパ
-  → XIAO ESP32-S3 Sense BAT
+Protected 18650
+  → J1 BATTERY
+  → SW1 physical power switch
+  → Q1 AO3401A P-MOSFET reverse-polarity protection
+  → JP1 BATT_CURRENT
+  → XIAO_BAT / XIAO BAT+
 
-XIAO 3V3
-  → TPS22919 load switch
+XIAO_3V3
+  → U1 TPS22919 load switch
   → PERIPH_3V3
       - LCD VCC
       - BNO055 VCC
-      - ATtiny1616 VCC
+      - ATtiny1616 VCC through JP2
 
 GPIO41/D12 pad
-  → TPS22919 EN
+  → PERIPH_EN
+  → U1 TPS22919 ON
 
 D6/GPIO43
   → LCD_BL
 
-BAT+
-  → 470kΩ/220kΩ分圧
-  → D3/GPIO4 ADC
+XIAO_BAT / +BATT sense
+  → R4/R5 divider
+  → BATT_ADC
 ```
 
-## BOM
+## Power-related BOM
 
-| Ref | Qty | 部品 | 推奨値 / 型番 | パッケージ目安 | 用途 | 備考 |
-|---|---:|---|---|---|---|---|
-| BT1 | 1 | 保護回路付き18650セル | 3.7V Li-ion, protected | 18650 | 主電源 | 外部充電器でも充電可能なセル。信頼できるメーカー品推奨。 |
-| H1 | 1 | 18650ホルダー | 保護回路付きセル長に対応 | リード線 or PCB端子 | 電池保持 | 保護回路付き18650は通常セルより長いので寸法注意。振動対策も必要。 |
-| SW1 | 1 | 物理電源スイッチ | SPST, 1A以上推奨 | スライド/トグル等 | 完全OFF | バッテリーとXIAOを切断。OFF中USB充電不可。 |
-| Q1 | 1 | P-MOSFET | AO3401A | SOT-23 | 逆接保護 | Drain=SW後BAT側、Source=XIAO BAT側、Gate=GND抵抗。Digi-Key購入予定。 |
-| R1 | 1 | Gate-GND抵抗 | 1MΩ | 0603/0805 | Q1ゲートプルダウン | 物理ON時の常時消費約4.2µA。0805の方が手実装しやすい。 |
-| JP1 | 1 | 電流測定ジャンパ | 2pin header / solder jumper | 2.54mm or pad | BAT全体電流測定 | 外してテスター直列挿入。通常時はジャンパで短絡。 |
-| U1 | 1 | ロードスイッチ | TPS22919DCKR | DCK / SC-70-6系 | PERIPH_3V3制御 | XIAO 3V3からLCD/IMU/ATtinyへ供給。ENはGPIO41。 |
-| R2 | 1 | ENプルダウン | 100kΩ | 0603/0805 | TPS22919 EN固定 | 起動直後/DeepSleep中に周辺電源OFFへ倒す。 |
-| C1 | 1 | 入力バイパス | 1µF | 0603/0805 X7R | TPS22919 VIN-GND | TPS22919近傍。データシート推奨値確認。 |
-| C2 | 1 | 出力バイパス | 1µF | 0603/0805 X7R | PERIPH_3V3安定化 | TPS22919 OUT近傍。突入/放電挙動を実測。 |
-| C3 | 1 | 周辺バルク | 47µF | 1206/電解/タンタル等 | PERIPH_3V3 | LCD/IMU/ATtinyの負荷変動対策。低ESRセラミックならDCバイアス容量低下に注意。 |
-| C4 | 1 | XIAO 3V3側バルク | 47µF〜100µF | 1206/電解/タンタル等 | 3V3安定化 | XIAO 3V3から周辺ロードスイッチへ入る近くに配置。 |
-| C5-C8 | 4 | ローカルデカップリング | 0.1µF | 0603/0805 X7R | LCD/BNO055/ATtiny等 | 各モジュールVCC近く。既存モジュール搭載分があっても基板側に置けると安心。 |
-| R3 | 1 | バッテリー分圧上側 | 470kΩ | 0603/0805, 1%推奨 | BAT測定 | BAT+からADC点。常時接続。 |
-| R4 | 1 | バッテリー分圧下側 | 220kΩ | 0603/0805, 1%推奨 | BAT測定 | ADC点からGND。4.2V→約1.34V。 |
-| C9 | 1 | ADC安定コンデンサ | 0.047µF or 0.1µF | 0603/0805 X7R | ADC点-GND | 高抵抗分圧の読み取り安定化。応答は遅くなるが電池測定には問題なし。 |
-| TP1 | 1 | テストポイント | BAT+ | pad | 電池正極測定 | 電池ホルダー後/スイッチ前の確認用。 |
-| TP2 | 1 | テストポイント | BAT_SW | pad | スイッチ後測定 | 物理スイッチ後、Q1前。 |
-| TP3 | 1 | テストポイント | XIAO_BAT | pad | XIAO BAT入力測定 | Q1/JP1後。 |
-| TP4 | 1 | テストポイント | 3V3 | pad | XIAO 3V3測定 | レギュレータ出力確認。 |
-| TP5 | 1 | テストポイント | PERIPH_3V3 | pad | 周辺電源測定 | TPS22919出力。DeepSleepで0Vになるか確認。 |
-| TP6 | 1 | テストポイント | PERIPH_EN | pad | GPIO41/EN測定 | 起動/DeepSleepシーケンス確認。 |
-| TP7+ | 複数 | GNDテストポイント | GND | pad | 測定基準 | 各測定点近くに複数あると便利。 |
-| F1 | 0/1 | リセッタブルヒューズ | 0.5A〜1A hold目安 | 1206/1812等 | 短絡保護補助 | 保護回路付きセルを使うため任意。テスト基板では入れる価値あり。 |
-| D1 | 0/1 | TVS/ESD保護 | 5V以下系 | SMD | BAT入力保護 | 通常は任意。長い電池リードやESDが気になる場合。 |
+| Ref | Qty | 部品 | 値 / 型番 | Footprint | Populate | 用途 | 備考 |
+|---|---:|---|---|---|---|---|---|
+| J1 | 1 | Battery connector | JST-XH 2pin | `Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical` | Yes | Battery input | Polarity確認。 |
+| SW1 | 1 | Physical power switch | SPST slide switch | `Button_Switch_THT:SW_DIP_SPSTx01_Slide_9.78x4.72mm_W7.62mm_P2.54mm` | Yes | 完全OFF | 実部品寸法/電流定格確認。 |
+| Q1 | 1 | P-MOSFET | AO3401A | `Package_TO_SOT_SMD:SOT-23` | Yes | 逆接保護 | Pin map checked: `1=G`, `2=S`, `3=D`。 |
+| R1 | 1 | Gate pulldown | 1MΩ | 0805 hand-solder | Yes | Q1 gate-GND | 物理ON時の消費を小さくする。 |
+| JP1 | 1 | Current-measure jumper | 2pin header | `PinHeader_1x02_P2.54mm_Vertical` | Yes | Battery current measurement | 通常時はジャンパ短絡。測定時は外して電流計を直列。 |
+| U1 | 1 | Load switch | TPS22919 | `@自分用:DCK0006A_L` | Yes | `PERIPH_3V3` control | Custom/local footprint。Gerberで必ず確認。 |
+| R2 | 1 | EN pulldown | 100kΩ | 0805 hand-solder | Yes | `PERIPH_EN` default off | Reset/DeepSleep時に周辺電源OFFへ倒す。 |
+| R3 | 1 | QOD resistor | 1kΩ | 0805 hand-solder | Yes | TPS22919 QOD tuning | OUT放電用。 |
+| C1 | 1 | Input bypass | 1µF | 0805 hand-solder | Yes | TPS22919 IN-GND | U1近傍。 |
+| C2 | 1 | Output bypass | 1µF | 0805 hand-solder | Yes | TPS22919 OUT-GND | U1近傍。 |
+| C3 | 1 | Peripheral bulk capacitor | 47µF | `@自分用:CAP_FN_B_PAN` | Yes | `PERIPH_3V3` bulk | 極性/サイズ/耐圧確認。 |
+| C4 | 1 | XIAO_3V3 bulk capacitor | 47µF | `@自分用:CAP_FN_B_PAN` | Yes | `XIAO_3V3` bulk | 極性/サイズ/耐圧確認。 |
+| R4 | 1 | Battery divider upper | 470kΩ | 0805 hand-solder | Yes | Battery ADC | 1%推奨。 |
+| R5 | 1 | Battery divider lower | 220kΩ | 0805 hand-solder | Yes | Battery ADC | 1%推奨。 |
+| C9 | 1 | ADC smoothing capacitor | 0.047µF | 0805 hand-solder | Yes | `BATT_ADC` smoothing | 高抵抗分圧の読み取り安定化。 |
+| TP1 | 1 | Test point | BAT+ | THT pad D1.5/D0.7 | Yes | 電池正極測定 |  |
+| TP2, TP7, TP12, TP14 | 4 | Test point | GND | THT pad D1.5/D0.7 | Yes | 測定GND | 複数配置。 |
+| TP3 | 1 | Test point | BAT_SW | THT pad D1.5/D0.7 | Yes | スイッチ後測定 |  |
+| TP4 | 1 | Test point | XIAO_BAT | THT pad D1.5/D0.7 | Yes | XIAO BAT入力測定 |  |
+| TP5 | 1 | Test point | XIAO_3V3 | THT pad D1.5/D0.7 | Yes | XIAO 3.3V測定 |  |
+| TP6 | 1 | Test point | PERIPH_EN | THT pad D1.5/D0.7 | Yes | Load-switch EN測定 |  |
+| TP9 | 1 | Test point | VBUS | THT pad D1.5/D0.7 | Yes | USB/VBUS観測 |  |
+| TP11 | 1 | Test point | PERIPH_3V3 | THT pad D1.5/D0.7 | Yes | 周辺3.3V測定 |  |
 
-## 推奨値の要点
-
-### バッテリー分圧
+## Battery divider
 
 ```text
-R3 = 470kΩ
-R4 = 220kΩ
-C9 = 0.047µF〜0.1µF
+R4 = 470kΩ
+R5 = 220kΩ
+C9 = 0.047µF
 ```
 
-計算値:
+Approximate ADC node voltage:
 
 ```text
-4.2V → 1.34V
-3.7V → 1.18V
-3.0V → 0.96V
-常時消費 ≈ 4.2V / 690kΩ = 6.1µA
+4.2V -> 1.34V
+3.7V -> 1.18V
+3.0V -> 0.96V
 ```
 
-### Q1 AO3401A ゲート
+Divider current:
 
 ```text
-R1 = 1MΩ
+4.2V / (470kΩ + 220kΩ) ≈ 6.1µA
 ```
 
-物理スイッチON中のみ消費。4.2V時で約4.2µA。
+## Notes
 
-### TPS22919 EN
-
-```text
-R2 = 100kΩ pulldown
-```
-
-GPIO41未初期化時、DeepSleep時、リセット時にPERIPH_3V3をOFFへ倒す。
-
-### コンデンサ
-
-- TPS22919のVIN/OUT近傍に1µF程度を置く。
-- PERIPH_3V3に47µF程度のバルクを置く。
-- XIAO 3V3からロードスイッチへ入る付近にも47〜100µF程度を置く。
-- 各周辺のVCC近くに0.1µFを置く。
-
-## 実装メモ
-
-- 抵抗/小容量コンデンサは手実装しやすさ優先なら0805、密度優先なら0603。
-- テスト基板では0805と大きめランド推奨。
-- AO3401AとTPS22919はピン番号をKiCadシンボル/フットプリント/データシートで必ず照合する。
-- TPS22919 OUT側に大容量を置きすぎるとOFF時のQuick Output Discharge電流や立ち上がり挙動に影響するため、まず47µF程度で試す。
-- DeepSleep前にSPI/I2C/GPIOをLowまたはHi-Zへ落としてからPERIPH_ENをLowにする。
+- `R7/R8` optional I2C pull-ups are not included here because they are not power-path parts; see the full BOM.
+- `SW2` WAKE was added after ERC review; it is listed in the full BOM.
+- `TP10` is now `SPI_MISO`; it is listed in the full BOM.
+- Custom/local footprints should be checked in Gerber output before ordering.
