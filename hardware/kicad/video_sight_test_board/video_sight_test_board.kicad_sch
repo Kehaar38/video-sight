@@ -7888,7 +7888,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "047832e7-608f-4485-9f1c-376275f16774")
-		(property "Reference" "TP1"
+		(property "Reference" "TP2"
 			(at 41.91 49.5299 90)
 			(effects
 				(font
@@ -7939,7 +7939,7 @@
 		(instances
 			(project ""
 				(path "/1bc004cb-e275-41d9-96ac-81dd92544364"
-					(reference "TP1")
+					(reference "TP2")
 					(unit 1)
 				)
 			)
@@ -13525,7 +13525,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "bfd90c93-7593-4037-9531-cdc4ea775def")
-		(property "Reference" "TP2"
+		(property "Reference" "TP1"
 			(at 41.91 57.1499 90)
 			(effects
 				(font
@@ -13576,7 +13576,7 @@
 		(instances
 			(project "video_sight_test_board"
 				(path "/1bc004cb-e275-41d9-96ac-81dd92544364"
-					(reference "TP2")
+					(reference "TP1")
 					(unit 1)
 				)
 			)
