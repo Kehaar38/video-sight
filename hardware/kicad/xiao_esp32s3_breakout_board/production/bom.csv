@@ -1,0 +1,7 @@
+﻿Designator,Footprint,Quantity,Value,LCSC Part #
+J1,IDC-Header_2x10_P2.54mm_Vertical,1,XIAO_BREAKOUT_BOARD,
+J2,PinHeader_2x03_P2.54mm_Vertical,1,Conn_02x03_Odd_Even,
+J3,PinHeader_1x02_P2.00mm_Vertical,1,Conn_01x02_Pin,
+"J4, J5",PinSocket_1x07_P2.54mm_Vertical,2,Conn_01x07_Socket,
+TP1,TestPoint_THTPad_D1.5mm_Drill0.7mm,1,CHIP_EN,
+TP2,TestPoint_THTPad_D1.5mm_Drill0.7mm,1,GND,
