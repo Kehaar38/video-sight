@@ -31,6 +31,7 @@ ATtiny1616
 XIAOのバッテリー端子に接続
 
 # ピンアサイン
+
 |XIAO Pin|GPIO|用途|
 |---|--:|---|
 |D0|GPIO1|Wakeボタン (DeepSleep復帰)|
@@ -46,4 +47,4 @@ XIAOのバッテリー端子に接続
 |D10|GPIO9|SPI MOSI (LCD/SD共有)|
 |D11|GPIO42|予備/背面パッド引き出し (マイク用ジャンパー注意)|
 |D12|GPIO41|PERIPH_EN (TPS22919周辺電源制御、背面パッド引き出し)|
-|(基板内蔵配線)|GPIO21|SPI CS (SD)|
+|(基板内蔵配線)|GPIO21|SPI CS (SD、実機確認済み)|
