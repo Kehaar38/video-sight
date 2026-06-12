@@ -119,8 +119,10 @@ bool sdReady = false;
 bool cameraReady = false;
 
 uint16_t readRgb565(const uint8_t *p) {
-  // esp_camera RGB565 byte order is MSB, LSB in the frame buffer.
-  return (static_cast<uint16_t>(p[0]) << 8) | p[1];
+  // esp_cameraのRGB565バッファは、この環境ではLCDへ渡す16bit値として
+  // low byte, high byte の順に読む必要があった。逆順に読むと緑/紫系の
+  // 派手な色化けになる。
+  return (static_cast<uint16_t>(p[1]) << 8) | p[0];
 }
 
 void rgb565ToRgb888(uint16_t c, uint8_t &r, uint8_t &g, uint8_t &b) {
@@ -215,10 +217,10 @@ bool initCamera() {
 
   sensor_t *sensor = esp_camera_sensor_get();
   if (sensor) {
-    // Keep default auto exposure/white balance for first bring-up.
-    // OV3660 may need vertical/horizontal flip depending on physical mounting;
-    // adjust after first live-view test if needed.
     sensor->set_framesize(sensor, CAMERA_FRAME_SIZE);
+    // 実機確認で上下反転していたため、OV3660側で垂直反転を補正する。
+    sensor->set_vflip(sensor, 1);
+    sensor->set_hmirror(sensor, 0);
   }
 
   Serial.printf("Camera ready: psram=%s fb_count=%d\n", psramFound() ? "yes" : "no",
