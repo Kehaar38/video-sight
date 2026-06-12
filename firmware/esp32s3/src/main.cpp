@@ -1,40 +1,64 @@
 #include <Arduino.h>
 #include <LovyanGFX.hpp>
+#include "FS.h"
+#include "SD.h"
+#include <SPI.h>
+#include "esp_camera.h"
+#include "esp_heap_caps.h"
 
-// VIDEO SIGHT LCD bring-up / resolution check.
-// Target module: Waveshare 1.83inch LCD Module Rev2 / ST7789P / 240x284.
+// VIDEO SIGHT camera live-view / FOV snapshot test.
+// - LCD: Waveshare 1.83inch LCD Rev2 / ST7789P, 240x284, rotation 0.
+// - Camera: XIAO ESP32S3 Sense bundled OV3660, DVP, RGB565 frame.
+// - Wake button: D0 / GPIO1, active LOW. Press to save the current camera frame to SD.
+// - SD: XIAO ESP32S3 Sense onboard microSD, CS GPIO21.
 //
-// Wiring from docs/hardware/parts_and_pinout.md:
-//   LCD_RST  D1 / GPIO2
-//   LCD_DC   D2 / GPIO3
-//   LCD_BL   D6 / GPIO43
-//   LCD_CS   D7 / GPIO44
-//   SPI_SCK  D8 / GPIO7
-//   SPI_MISO D9 / GPIO8  (LCD does not use MISO)
-//   SPI_MOSI D10 / GPIO9
-//   PERIPH_EN D12 / GPIO41 (TPS22919 peripheral rail enable)
+// The saved BMP is the camera-acquired frame size, before LCD crop/resize.
+// LCD live view crops the left/right sides of the 4:3 camera frame to match the
+// portrait LCD aspect ratio, then scales it to 240x284 for aiming/alignment.
 
 namespace pins {
+constexpr int WAKE_BUTTON = 1;
+
 constexpr int LCD_RST = 2;
 constexpr int LCD_DC = 3;
 constexpr int LCD_BL = 43;
 constexpr int LCD_CS = 44;
 constexpr int SPI_SCK = 7;
+constexpr int SPI_MISO = 8;
 constexpr int SPI_MOSI = 9;
+constexpr int SD_CS = 21;
 constexpr int PERIPH_EN = 41;
+
+// XIAO ESP32S3 Sense camera slot GPIO assignment from Seeed Wiki.
+constexpr int CAM_XCLK = 10;
+constexpr int CAM_SIOD = 40;
+constexpr int CAM_SIOC = 39;
+constexpr int CAM_Y9 = 48;
+constexpr int CAM_Y8 = 11;
+constexpr int CAM_Y7 = 12;
+constexpr int CAM_Y6 = 14;
+constexpr int CAM_Y5 = 16;
+constexpr int CAM_Y4 = 18;
+constexpr int CAM_Y3 = 17;
+constexpr int CAM_Y2 = 15;
+constexpr int CAM_VSYNC = 38;
+constexpr int CAM_HREF = 47;
+constexpr int CAM_PCLK = 13;
+constexpr int CAM_PWDN = -1;
+constexpr int CAM_RESET = -1;
 }  // namespace pins
 
-// Confirmed on VIDEO SIGHT test hardware:
-//   visible area: 240 x 284
-//   product orientation: rotation 0
-//   offset: 0,0
-// The physical LCD has rounded corners; do not place important UI elements in
-// the extreme corners.
 constexpr int LCD_WIDTH = 240;
 constexpr int LCD_HEIGHT = 284;
 constexpr int LCD_OFFSET_X = 0;
 constexpr int LCD_OFFSET_Y = 0;
 constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
+
+// Keep the camera frame 4:3 for FOV measurement. VGA is a good first bring-up
+// point: large enough for pixel measurement, small enough for live conversion.
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_VGA;  // 640x480
+constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
+constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
 
 class VideoSightLcd : public lgfx::LGFX_Device {
   lgfx::Bus_SPI bus_;
@@ -64,7 +88,6 @@ class VideoSightLcd : public lgfx::LGFX_Device {
       cfg.pin_cs = pins::LCD_CS;
       cfg.pin_rst = pins::LCD_RST;
       cfg.pin_busy = -1;
-
       cfg.memory_width = 240;
       cfg.memory_height = 320;
       cfg.panel_width = LCD_WIDTH;
@@ -72,7 +95,6 @@ class VideoSightLcd : public lgfx::LGFX_Device {
       cfg.offset_x = LCD_OFFSET_X;
       cfg.offset_y = LCD_OFFSET_Y;
       cfg.offset_rotation = 0;
-
       cfg.dummy_read_pixel = 8;
       cfg.dummy_read_bits = 1;
       cfg.readable = false;
@@ -80,7 +102,6 @@ class VideoSightLcd : public lgfx::LGFX_Device {
       cfg.rgb_order = false;
       cfg.dlen_16bit = false;
       cfg.bus_shared = true;
-
       panel_.config(cfg);
     }
 
@@ -89,9 +110,23 @@ class VideoSightLcd : public lgfx::LGFX_Device {
 };
 
 VideoSightLcd lcd;
+uint16_t *lcdLine = nullptr;
+uint32_t captureIndex = 0;
+uint32_t lastButtonChangeMs = 0;
+bool lastButtonLevel = HIGH;
+bool stableButtonLevel = HIGH;
+bool sdReady = false;
+bool cameraReady = false;
 
-uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
-  return lcd.color565(r, g, b);
+uint16_t readRgb565(const uint8_t *p) {
+  // esp_camera RGB565 byte order is MSB, LSB in the frame buffer.
+  return (static_cast<uint16_t>(p[0]) << 8) | p[1];
+}
+
+void rgb565ToRgb888(uint16_t c, uint8_t &r, uint8_t &g, uint8_t &b) {
+  r = ((c >> 11) & 0x1F) * 255 / 31;
+  g = ((c >> 5) & 0x3F) * 255 / 63;
+  b = (c & 0x1F) * 255 / 31;
 }
 
 void enablePeripheralRailAndBacklight() {
@@ -103,79 +138,259 @@ void enablePeripheralRailAndBacklight() {
   digitalWrite(pins::LCD_BL, HIGH);
 }
 
-void drawCornerLabel(int x, int y, const char *label, uint16_t color) {
-  lcd.fillRect(x, y, 28, 28, color);
-  lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  lcd.setCursor(x + 2, y + 31);
-  lcd.print(label);
-}
+bool initLcd() {
+  pinMode(pins::LCD_CS, OUTPUT);
+  digitalWrite(pins::LCD_CS, HIGH);
 
-void drawResolutionPattern(uint8_t rotation) {
-  lcd.setRotation(rotation);
-  const int w = lcd.width();
-  const int h = lcd.height();
+  if (!lcd.init()) {
+    Serial.println("lcd.init() failed");
+    return false;
+  }
 
+  lcd.setRotation(LCD_PRODUCT_ROTATION);
+  lcd.setBrightness(255);
   lcd.fillScreen(TFT_BLACK);
-
-  // One-pixel outer border. If any side is missing, the configured resolution
-  // or ST7789 offset is probably wrong.
-  lcd.drawRect(0, 0, w, h, TFT_WHITE);
-  lcd.drawRect(1, 1, w - 2, h - 2, TFT_DARKGREY);
-
-  // Colored corner blocks make rotation and edge clipping easy to identify.
-  drawCornerLabel(4, 4, "TL", TFT_RED);
-  drawCornerLabel(w - 32, 4, "TR", TFT_GREEN);
-  drawCornerLabel(4, h - 48, "BL", TFT_BLUE);
-  drawCornerLabel(w - 32, h - 48, "BR", TFT_ORANGE);
-
-  // Center crosshair and 20-pixel grid ticks for visible-area confirmation.
-  const int cx = w / 2;
-  const int cy = h / 2;
-  lcd.drawFastHLine(0, cy, w, TFT_CYAN);
-  lcd.drawFastVLine(cx, 0, h, TFT_CYAN);
-
-  for (int x = 0; x < w; x += 20) {
-    lcd.drawFastVLine(x, 0, 8, TFT_YELLOW);
-    lcd.drawFastVLine(x, h - 8, 8, TFT_YELLOW);
-  }
-  for (int y = 0; y < h; y += 20) {
-    lcd.drawFastHLine(0, y, 8, TFT_YELLOW);
-    lcd.drawFastHLine(w - 8, y, 8, TFT_YELLOW);
-  }
-
   lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  lcd.setTextSize(1);
-  lcd.setCursor(38, 8);
-  lcd.print("VIDEO SIGHT LCD TEST");
-  lcd.setCursor(38, 22);
-  lcd.printf("rotation=%u", rotation);
-  lcd.setCursor(38, 36);
-  lcd.printf("visible=%dx%d", w, h);
-  lcd.setCursor(38, 50);
-  lcd.printf("panel=%dx%d", LCD_WIDTH, LCD_HEIGHT);
-  lcd.setCursor(38, 64);
-  lcd.printf("offset=%d,%d", LCD_OFFSET_X, LCD_OFFSET_Y);
-
-  lcd.setCursor(20, cy + 10);
-  lcd.print("Check full white border");
-  lcd.setCursor(20, cy + 24);
-  lcd.print("and all 4 corner blocks");
-
-  Serial.printf("rotation=%u width=%d height=%d offset=(%d,%d)\n", rotation, w, h,
-                LCD_OFFSET_X, LCD_OFFSET_Y);
+  lcd.setCursor(8, 8);
+  lcd.print("VIDEO SIGHT camera test");
+  return true;
 }
 
-void drawColorCycleFrame(uint16_t color, const char *name) {
-  lcd.fillScreen(color);
-  lcd.setTextColor(TFT_WHITE, color);
-  lcd.setTextSize(2);
-  lcd.setCursor(20, 20);
-  lcd.print(name);
-  lcd.setTextSize(1);
-  lcd.setCursor(20, 52);
-  lcd.print("Color fill test");
-  Serial.print("color fill: ");
-  Serial.println(name);
+bool initSd() {
+  pinMode(pins::SD_CS, OUTPUT);
+  digitalWrite(pins::SD_CS, HIGH);
+  digitalWrite(pins::LCD_CS, HIGH);
+
+  if (!SD.begin(pins::SD_CS)) {
+    Serial.println("SD.begin(21) failed");
+    return false;
+  }
+
+  if (SD.cardType() == CARD_NONE) {
+    Serial.println("No SD card attached");
+    return false;
+  }
+
+  if (!SD.exists("/fov")) {
+    SD.mkdir("/fov");
+  }
+
+  Serial.println("SD ready: /fov");
+  return true;
+}
+
+bool initCamera() {
+  camera_config_t config = {};
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = pins::CAM_Y2;
+  config.pin_d1 = pins::CAM_Y3;
+  config.pin_d2 = pins::CAM_Y4;
+  config.pin_d3 = pins::CAM_Y5;
+  config.pin_d4 = pins::CAM_Y6;
+  config.pin_d5 = pins::CAM_Y7;
+  config.pin_d6 = pins::CAM_Y8;
+  config.pin_d7 = pins::CAM_Y9;
+  config.pin_xclk = pins::CAM_XCLK;
+  config.pin_pclk = pins::CAM_PCLK;
+  config.pin_vsync = pins::CAM_VSYNC;
+  config.pin_href = pins::CAM_HREF;
+  config.pin_sccb_sda = pins::CAM_SIOD;
+  config.pin_sccb_scl = pins::CAM_SIOC;
+  config.pin_pwdn = pins::CAM_PWDN;
+  config.pin_reset = pins::CAM_RESET;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = CAMERA_PIXEL_FORMAT;
+  config.frame_size = CAMERA_FRAME_SIZE;
+  config.jpeg_quality = JPEG_QUALITY_UNUSED_FOR_RGB565;
+  config.fb_count = psramFound() ? 2 : 1;
+  config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
+  config.grab_mode = CAMERA_GRAB_LATEST;
+
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("esp_camera_init failed: 0x%x\n", err);
+    return false;
+  }
+
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor) {
+    // Keep default auto exposure/white balance for first bring-up.
+    // OV3660 may need vertical/horizontal flip depending on physical mounting;
+    // adjust after first live-view test if needed.
+    sensor->set_framesize(sensor, CAMERA_FRAME_SIZE);
+  }
+
+  Serial.printf("Camera ready: psram=%s fb_count=%d\n", psramFound() ? "yes" : "no",
+                config.fb_count);
+  return true;
+}
+
+void drawStatus(const char *message, uint16_t color = TFT_WHITE) {
+  lcd.fillRect(0, 0, LCD_WIDTH, 18, TFT_BLACK);
+  lcd.setTextColor(color, TFT_BLACK);
+  lcd.setCursor(4, 4);
+  lcd.print(message);
+}
+
+void drawFrameToLcd(const camera_fb_t *fb) {
+  if (!fb || fb->format != PIXFORMAT_RGB565 || !lcdLine) {
+    return;
+  }
+
+  const int srcW = fb->width;
+  const int srcH = fb->height;
+  const int cropW = (srcH * LCD_WIDTH) / LCD_HEIGHT;
+  const int cropX = (srcW - cropW) / 2;
+
+  lcd.startWrite();
+  for (int y = 0; y < LCD_HEIGHT; ++y) {
+    const int srcY = (y * srcH) / LCD_HEIGHT;
+    const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
+    for (int x = 0; x < LCD_WIDTH; ++x) {
+      const int srcX = cropX + (x * cropW) / LCD_WIDTH;
+      lcdLine[x] = readRgb565(srcRow + srcX * 2);
+    }
+    lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
+  }
+  lcd.endWrite();
+
+  // Simple safe-area and capture guide overlay. It is drawn after the frame so
+  // the saved SD image remains raw camera data, not overlayed display data.
+  lcd.drawRect(20, 20, LCD_WIDTH - 40, LCD_HEIGHT - 40, TFT_DARKGREY);
+  lcd.drawFastHLine(0, LCD_HEIGHT / 2, LCD_WIDTH, TFT_DARKGREY);
+  lcd.drawFastVLine(LCD_WIDTH / 2, 0, LCD_HEIGHT, TFT_DARKGREY);
+}
+
+bool writeBmp24FromRgb565Frame(const camera_fb_t *fb, const char *path) {
+  if (!fb || fb->format != PIXFORMAT_RGB565) {
+    Serial.println("save failed: frame is not RGB565");
+    return false;
+  }
+
+  File file = SD.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.printf("failed to open %s\n", path);
+    return false;
+  }
+
+  const uint32_t width = fb->width;
+  const uint32_t height = fb->height;
+  const uint32_t rowSize = ((width * 3 + 3) / 4) * 4;
+  const uint32_t pixelDataSize = rowSize * height;
+  const uint32_t fileSize = 54 + pixelDataSize;
+
+  uint8_t header[54] = {};
+  header[0] = 'B';
+  header[1] = 'M';
+  header[2] = fileSize & 0xFF;
+  header[3] = (fileSize >> 8) & 0xFF;
+  header[4] = (fileSize >> 16) & 0xFF;
+  header[5] = (fileSize >> 24) & 0xFF;
+  header[10] = 54;
+  header[14] = 40;
+  header[18] = width & 0xFF;
+  header[19] = (width >> 8) & 0xFF;
+  header[20] = (width >> 16) & 0xFF;
+  header[21] = (width >> 24) & 0xFF;
+  header[22] = height & 0xFF;
+  header[23] = (height >> 8) & 0xFF;
+  header[24] = (height >> 16) & 0xFF;
+  header[25] = (height >> 24) & 0xFF;
+  header[26] = 1;
+  header[28] = 24;
+  header[34] = pixelDataSize & 0xFF;
+  header[35] = (pixelDataSize >> 8) & 0xFF;
+  header[36] = (pixelDataSize >> 16) & 0xFF;
+  header[37] = (pixelDataSize >> 24) & 0xFF;
+
+  if (file.write(header, sizeof(header)) != sizeof(header)) {
+    file.close();
+    return false;
+  }
+
+  uint8_t *row = static_cast<uint8_t *>(malloc(rowSize));
+  if (!row) {
+    file.close();
+    Serial.println("save failed: row malloc");
+    return false;
+  }
+
+  const uint32_t padding = rowSize - width * 3;
+  for (int32_t y = height - 1; y >= 0; --y) {
+    const uint8_t *src = fb->buf + y * width * 2;
+    uint8_t *dst = row;
+    for (uint32_t x = 0; x < width; ++x) {
+      uint8_t r, g, b;
+      rgb565ToRgb888(readRgb565(src + x * 2), r, g, b);
+      *dst++ = b;
+      *dst++ = g;
+      *dst++ = r;
+    }
+    for (uint32_t i = 0; i < padding; ++i) {
+      *dst++ = 0;
+    }
+    if (file.write(row, rowSize) != rowSize) {
+      free(row);
+      file.close();
+      Serial.println("save failed: write row");
+      return false;
+    }
+  }
+
+  free(row);
+  file.close();
+  return true;
+}
+
+bool saveCurrentFrameToSd(const camera_fb_t *fb) {
+  if (!sdReady) {
+    drawStatus("SD not ready", TFT_RED);
+    return false;
+  }
+
+  char path[48];
+  snprintf(path, sizeof(path), "/fov/fov_%04lu_%ux%u.bmp",
+           static_cast<unsigned long>(captureIndex++), fb->width, fb->height);
+
+  Serial.printf("Saving %s ...\n", path);
+  drawStatus("Saving BMP...", TFT_YELLOW);
+
+  const uint32_t start = millis();
+  const bool ok = writeBmp24FromRgb565Frame(fb, path);
+  const uint32_t elapsed = millis() - start;
+
+  if (ok) {
+    Serial.printf("Saved %s in %lu ms\n", path, static_cast<unsigned long>(elapsed));
+    drawStatus("Saved to /fov", TFT_GREEN);
+  } else {
+    Serial.printf("Save failed: %s\n", path);
+    drawStatus("Save failed", TFT_RED);
+  }
+  return ok;
+}
+
+bool wakeButtonPressedEvent() {
+  const bool level = digitalRead(pins::WAKE_BUTTON);
+  const uint32_t now = millis();
+
+  if (level != lastButtonLevel) {
+    lastButtonLevel = level;
+    lastButtonChangeMs = now;
+  }
+
+  if ((now - lastButtonChangeMs) < 40) {
+    return false;
+  }
+
+  if (level != stableButtonLevel) {
+    stableButtonLevel = level;
+    if (stableButtonLevel == LOW) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void setup() {
@@ -184,58 +399,57 @@ void setup() {
 
   Serial.println();
   Serial.println("========================================");
-  Serial.println("VIDEO SIGHT - LCD resolution test");
-  Serial.println("Waveshare 1.83inch LCD Rev2 / ST7789P");
-  Serial.println("Expected visible resolution: 240x284");
+  Serial.println("VIDEO SIGHT - camera live view / FOV capture");
+  Serial.println("Wake button: save current RGB565 camera frame as BMP to /fov");
+  Serial.println("LCD: center crop left/right to 240x284 portrait display");
   Serial.println("========================================");
+  Serial.printf("PSRAM found: %s size=%u\n", psramFound() ? "yes" : "no",
+                static_cast<unsigned>(ESP.getPsramSize()));
 
+  pinMode(pins::WAKE_BUTTON, INPUT_PULLUP);
   enablePeripheralRailAndBacklight();
 
-  if (!lcd.init()) {
-    Serial.println("lcd.init() failed");
-    return;
+  lcdLine = static_cast<uint16_t *>(heap_caps_malloc(LCD_WIDTH * sizeof(uint16_t),
+                                                      MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  if (!lcdLine) {
+    lcdLine = static_cast<uint16_t *>(malloc(LCD_WIDTH * sizeof(uint16_t)));
   }
 
-  lcd.setBrightness(255);
-  drawResolutionPattern(LCD_PRODUCT_ROTATION);
+  const bool lcdReady = initLcd();
+  sdReady = initSd();
+  cameraReady = initCamera();
+
+  if (!lcdLine) {
+    Serial.println("lcdLine allocation failed");
+    if (lcdReady) drawStatus("line buffer failed", TFT_RED);
+  } else if (!cameraReady) {
+    if (lcdReady) drawStatus("camera failed", TFT_RED);
+  } else if (!sdReady) {
+    if (lcdReady) drawStatus("SD failed", TFT_RED);
+  } else {
+    if (lcdReady) drawStatus("Live: D0 saves BMP", TFT_GREEN);
+  }
 }
 
 void loop() {
-  static uint32_t last = 0;
-  static uint8_t step = 0;
-
-  if (millis() - last < 3500) {
-    delay(10);
+  if (!cameraReady || !lcdLine) {
+    delay(500);
     return;
   }
-  last = millis();
 
-  switch (step % 8) {
-    case 0:
-      drawResolutionPattern(0);
-      break;
-    case 1:
-      drawResolutionPattern(1);
-      break;
-    case 2:
-      drawResolutionPattern(2);
-      break;
-    case 3:
-      drawResolutionPattern(3);
-      break;
-    case 4:
-      drawColorCycleFrame(TFT_RED, "RED");
-      break;
-    case 5:
-      drawColorCycleFrame(TFT_GREEN, "GREEN");
-      break;
-    case 6:
-      drawColorCycleFrame(TFT_BLUE, "BLUE");
-      break;
-    case 7:
-      drawColorCycleFrame(TFT_WHITE, "WHITE");
-      break;
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("camera capture failed");
+    drawStatus("capture failed", TFT_RED);
+    delay(100);
+    return;
   }
 
-  step++;
+  drawFrameToLcd(fb);
+
+  if (wakeButtonPressedEvent()) {
+    saveCurrentFrameToSd(fb);
+  }
+
+  esp_camera_fb_return(fb);
 }

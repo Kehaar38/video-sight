@@ -4,7 +4,9 @@ XIAO ESP32-S3 Sense
 [Getting Started with Seeed Studio XIAO ESP32-S3 Series | Seeed Studio Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 
 ## カメラ
-XIAO ESP32-S3 Sense付属カメラ
+XIAO ESP32-S3 Sense付属カメラ / OV3660
+- 最大解像度: 2048x1536
+- FOV詳細は未確定。`docs/hardware/bringup/camera_fov_snapshot.md` の手順で実測する。
 [Seeed Studio Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/#installation-of-expansion-boards-for-sense)
 
 ## ディスプレイ
