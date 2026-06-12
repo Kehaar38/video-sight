@@ -153,23 +153,36 @@ bool initLcd() {
   lcd.setBrightness(255);
   lcd.fillScreen(TFT_BLACK);
   lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-  lcd.setCursor(8, 8);
+  lcd.setCursor(24, 24);
   lcd.print("VIDEO SIGHT camera test");
   return true;
 }
 
-bool initSd() {
+bool initSd(bool remount = false) {
+  if (remount) {
+    SD.end();
+    delay(20);
+  }
+
   pinMode(pins::SD_CS, OUTPUT);
+  pinMode(pins::LCD_CS, OUTPUT);
   digitalWrite(pins::SD_CS, HIGH);
   digitalWrite(pins::LCD_CS, HIGH);
 
-  if (!SD.begin(pins::SD_CS)) {
-    Serial.println("SD.begin(21) failed");
+  // LCD and SD share SCK/MOSI.  SD also needs MISO, so configure the Arduino
+  // SPI object explicitly before SD.begin(); otherwise SD.begin(21) may use an
+  // unsuitable default pin map after the LCD bus has been initialized.
+  SPI.begin(pins::SPI_SCK, pins::SPI_MISO, pins::SPI_MOSI, pins::SD_CS);
+
+  if (!SD.begin(pins::SD_CS, SPI, 4000000)) {
+    Serial.println("SD.begin(21, SPI, 4MHz) failed");
+    digitalWrite(pins::SD_CS, HIGH);
     return false;
   }
 
   if (SD.cardType() == CARD_NONE) {
     Serial.println("No SD card attached");
+    digitalWrite(pins::SD_CS, HIGH);
     return false;
   }
 
@@ -177,6 +190,7 @@ bool initSd() {
     SD.mkdir("/fov");
   }
 
+  digitalWrite(pins::SD_CS, HIGH);
   Serial.println("SD ready: /fov");
   return true;
 }
@@ -229,9 +243,12 @@ bool initCamera() {
 }
 
 void drawStatus(const char *message, uint16_t color = TFT_WHITE) {
-  lcd.fillRect(0, 0, LCD_WIDTH, 18, TFT_BLACK);
+  // Avoid rounded corners: the first visible characters can be clipped near x=0/y=0.
+  constexpr int x = 24;
+  constexpr int y = 24;
+  lcd.fillRect(x - 4, y - 4, LCD_WIDTH - x, 18, TFT_BLACK);
   lcd.setTextColor(color, TFT_BLACK);
-  lcd.setCursor(4, 4);
+  lcd.setCursor(x, y);
   lcd.print(message);
 }
 
@@ -270,9 +287,13 @@ bool writeBmp24FromRgb565Frame(const camera_fb_t *fb, const char *path) {
     return false;
   }
 
+  digitalWrite(pins::LCD_CS, HIGH);
+  digitalWrite(pins::SD_CS, HIGH);
+
   File file = SD.open(path, FILE_WRITE);
   if (!file) {
     Serial.printf("failed to open %s\n", path);
+    digitalWrite(pins::SD_CS, HIGH);
     return false;
   }
 
@@ -308,12 +329,14 @@ bool writeBmp24FromRgb565Frame(const camera_fb_t *fb, const char *path) {
 
   if (file.write(header, sizeof(header)) != sizeof(header)) {
     file.close();
+    digitalWrite(pins::SD_CS, HIGH);
     return false;
   }
 
   uint8_t *row = static_cast<uint8_t *>(malloc(rowSize));
   if (!row) {
     file.close();
+    digitalWrite(pins::SD_CS, HIGH);
     Serial.println("save failed: row malloc");
     return false;
   }
@@ -335,6 +358,7 @@ bool writeBmp24FromRgb565Frame(const camera_fb_t *fb, const char *path) {
     if (file.write(row, rowSize) != rowSize) {
       free(row);
       file.close();
+      digitalWrite(pins::SD_CS, HIGH);
       Serial.println("save failed: write row");
       return false;
     }
@@ -342,10 +366,17 @@ bool writeBmp24FromRgb565Frame(const camera_fb_t *fb, const char *path) {
 
   free(row);
   file.close();
+  digitalWrite(pins::SD_CS, HIGH);
   return true;
 }
 
 bool saveCurrentFrameToSd(const camera_fb_t *fb) {
+  if (!sdReady) {
+    Serial.println("SD not ready; retrying SD init before save");
+    drawStatus("Retry SD...", TFT_YELLOW);
+    sdReady = initSd(true);
+  }
+
   if (!sdReady) {
     drawStatus("SD not ready", TFT_RED);
     return false;
