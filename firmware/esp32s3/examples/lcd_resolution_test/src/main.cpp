@@ -24,15 +24,17 @@ constexpr int SPI_MOSI = 9;
 constexpr int PERIPH_EN = 41;
 }  // namespace pins
 
-// Rev2 specification from Waveshare: 240(H) x 284(V), ST7789P.
+// Confirmed on VIDEO SIGHT test hardware:
+//   visible area: 240 x 284
+//   product orientation: rotation 0
+//   offset: 0,0
+// The physical LCD has rounded corners; do not place important UI elements in
+// the extreme corners.
 constexpr int LCD_WIDTH = 240;
 constexpr int LCD_HEIGHT = 284;
-
-// ST7789P controller memory is larger than the visible panel.
-// If the border is shifted or clipped on the real module, change these first
-// and rebuild. Common ST7789 vertical offsets are 0, 20, 36, or 40.
 constexpr int LCD_OFFSET_X = 0;
 constexpr int LCD_OFFSET_Y = 0;
+constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
 class VideoSightLcd : public lgfx::LGFX_Device {
   lgfx::Bus_SPI bus_;
@@ -195,7 +197,7 @@ void setup() {
   }
 
   lcd.setBrightness(255);
-  drawResolutionPattern(0);
+  drawResolutionPattern(LCD_PRODUCT_ROTATION);
 }
 
 void loop() {

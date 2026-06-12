@@ -8,7 +8,10 @@ XIAO ESP32-S3 Sense付属カメラ
 [Seeed Studio Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/#installation-of-expansion-boards-for-sense)
 
 ## ディスプレイ
-1.83inch LCD Module
+Waveshare 1.83inch LCD Module Rev2 / ST7789P
+- 表示領域: 240x284 (実機確認済み)
+- 使用向き: rotation 0
+- 角丸形状のため四隅は安全領域外として扱う
 [1.83inch LCD Module - Waveshare Wiki](https://www.waveshare.com/wiki/1.83inch_LCD_Module)
 
 ## IMU

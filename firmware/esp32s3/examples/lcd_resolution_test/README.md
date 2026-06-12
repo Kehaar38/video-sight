@@ -7,7 +7,9 @@ Waveshare 1.83inch LCD Module Rev2 / ST7789P の動作確認と、表示可能�
 - MCU: Seeed Studio XIAO ESP32S3 Sense
 - LCD: Waveshare 1.83inch LCD Module Rev2
 - Controller: ST7789P
-- 想定表示領域: 240 x 284
+- 確定表示領域: 240 x 284
+- 確定使用向き: rotation 0
+- 確定オフセット: 0,0
 
 ## 実行
 
@@ -28,10 +30,22 @@ pio device monitor
 確認すること:
 
 - 白い外枠が4辺すべて見える
-- 4隅の `TL` / `TR` / `BL` / `BR` ブロックが欠けない
+- 4隅の `TL` / `TR` / `BL` / `BR` ブロックは、LCDの角丸形状によって角だけ欠ける
 - rotation 0/2 で `visible=240x284` と表示される
 - rotation 1/3 で `visible=284x240` と表示される
 - 色順が自然で、赤・緑・青が入れ替わっていない
+
+## 実機確認結果
+
+Issue #6 の写真で確認済み。
+
+- 白い枠線は4辺とも見えている
+- 解像度は `240 x 284` で確定
+- VIDEO SIGHTでは `rotation 0` を使用する
+- `offset=0,0` でよい
+- 角丸ディスプレイのため四隅は物理的に欠ける
+- 黄色い20px目盛りの2本目付近からカーブが始まるように見える
+- 色表示に違和感はない
 
 ## オフセット調整
 
