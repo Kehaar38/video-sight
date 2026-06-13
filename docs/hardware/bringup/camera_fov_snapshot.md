@@ -13,7 +13,7 @@ XIAO ESP32S3 Sense付属カメラのライブ画像をLCDへ表示し、FOV測�
 - LCD表示領域: 240x284, rotation 0
 - SD CS: GPIO21
 - 撮影ボタン: Wakeボタン D0 / GPIO1, active LOW
-- SD初期化: LCDと共有するSPIを `SCK=GPIO7, MISO=GPIO8, MOSI=GPIO9, CS=GPIO21` として明示し、4MHzで初期化する。
+- SD初期化: LCDと共有するSPIを `SCK=GPIO7, MISO=GPIO8, MOSI=GPIO9, CS=GPIO21` として明示し、4MHzで初期化する。LovyanGFX側も同じSPI2/FSPIホストで、LCDは4線SPI・MISO有効として設定する。
 
 ## 現在の実装
 

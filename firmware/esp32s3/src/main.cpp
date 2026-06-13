@@ -72,12 +72,14 @@ class VideoSightLcd : public lgfx::LGFX_Device {
       cfg.spi_mode = 0;
       cfg.freq_write = 40000000;
       cfg.freq_read = 16000000;
-      cfg.spi_3wire = true;
+      // LCDはDC線を持つ4線SPIとして扱う。SDと同じ物理SPIを共有するため、
+      // MISOもバス設定に含めておく。
+      cfg.spi_3wire = false;
       cfg.use_lock = true;
       cfg.dma_channel = SPI_DMA_CH_AUTO;
       cfg.pin_sclk = pins::SPI_SCK;
       cfg.pin_mosi = pins::SPI_MOSI;
-      cfg.pin_miso = -1;
+      cfg.pin_miso = pins::SPI_MISO;
       cfg.pin_dc = pins::LCD_DC;
       bus_.config(cfg);
       panel_.setBus(&bus_);
@@ -110,6 +112,7 @@ class VideoSightLcd : public lgfx::LGFX_Device {
 };
 
 VideoSightLcd lcd;
+SPIClass sharedSpi(FSPI);
 uint16_t *lcdLine = nullptr;
 uint32_t captureIndex = 0;
 uint32_t lastButtonChangeMs = 0;
@@ -169,13 +172,12 @@ bool initSd(bool remount = false) {
   digitalWrite(pins::SD_CS, HIGH);
   digitalWrite(pins::LCD_CS, HIGH);
 
-  // LCD and SD share SCK/MOSI.  SD also needs MISO, so configure the Arduino
-  // SPI object explicitly before SD.begin(); otherwise SD.begin(21) may use an
-  // unsuitable default pin map after the LCD bus has been initialized.
-  SPI.begin(pins::SPI_SCK, pins::SPI_MISO, pins::SPI_MOSI, pins::SD_CS);
+  // 添付の成功例と同じ考え方で、LCDとSDが同じSPIClassを使うようにする。
+  // LovyanGFX側も同じSPI2/FSPIホスト・同じピンで設定している。
+  sharedSpi.begin(pins::SPI_SCK, pins::SPI_MISO, pins::SPI_MOSI, pins::LCD_CS);
 
-  if (!SD.begin(pins::SD_CS, SPI, 4000000)) {
-    Serial.println("SD.begin(21, SPI, 4MHz) failed");
+  if (!SD.begin(pins::SD_CS, sharedSpi, 4000000)) {
+    Serial.println("SD.begin(21, sharedSpi, 4MHz) failed");
     digitalWrite(pins::SD_CS, HIGH);
     return false;
   }
@@ -449,8 +451,8 @@ void setup() {
   }
 
   const bool lcdReady = initLcd();
-  sdReady = initSd();
   cameraReady = initCamera();
+  sdReady = initSd();
 
   if (!lcdLine) {
     Serial.println("lcdLine allocation failed");
