@@ -57,10 +57,10 @@ constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 // 1x display crop derived from 2026-06-14 FOV measurement:
 // 150x300mm target at 1000mm occupied 48x95px in the 640x480 raw frame.
 // This gives raw-frame FOV of about H=90.0deg / V=74.3deg.  Cropping the
-// center to 157x185px gives about H=27.57deg / V=32.57deg, close to the
-// LCD apparent FOV at 60mm eye distance (H=27.64deg / V=32.46deg).
-constexpr int LIVE_VIEW_CROP_WIDTH = 157;
-constexpr int LIVE_VIEW_CROP_HEIGHT = 185;
+// center to 63x74px gives about H=11.24deg / V=13.33deg, close to the
+// LCD apparent FOV at 150mm eye distance (H=11.24deg / V=13.28deg).
+constexpr int LIVE_VIEW_CROP_WIDTH = 63;
+constexpr int LIVE_VIEW_CROP_HEIGHT = 74;
 
 // Keep the camera frame 4:3 for FOV measurement. VGA is a good first bring-up
 // point: large enough for pixel measurement, small enough for live conversion.
