@@ -94,4 +94,4 @@ LCDサイズ `29.52 x 34.93mm`、目の距離 `60mm` の場合、1倍相当のLC
 - 起動時にSD初期化へ失敗した場合でも、Wakeボタン押下時にSD初期化を一度リトライする。
 - 画面が左右反転している場合は、OV3660のセンサー設定で `hmirror` を調整する。
 - 上下反転は実機確認済みのため、現在のファームでは `set_vflip(1)` で補正している。
-- RGB565のbyte orderは実機表示の色化け確認後、`low byte, high byte` として読む設定にしている。
+- RGB565のbyte orderは、LCDライブ表示とBMP保存で分けて扱う。LCD表示は `low byte, high byte`、24bit BMP保存は `high byte, low byte` として展開する。

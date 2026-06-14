@@ -121,11 +121,16 @@ bool stableButtonLevel = HIGH;
 bool sdReady = false;
 bool cameraReady = false;
 
-uint16_t readRgb565(const uint8_t *p) {
-  // esp_cameraのRGB565バッファは、この環境ではLCDへ渡す16bit値として
-  // low byte, high byte の順に読む必要があった。逆順に読むと緑/紫系の
-  // 派手な色化けになる。
+uint16_t readRgb565ForLcd(const uint8_t *p) {
+  // LCD live viewは実機確認で low byte, high byte の順が正常だった。
   return (static_cast<uint16_t>(p[1]) << 8) | p[0];
+}
+
+uint16_t readRgb565ForBmp(const uint8_t *p) {
+  // SDへ保存した24bit BMPは、LCD用と同じbyte orderでRGB888化すると
+  // 疑似カラー状に崩れた。保存画像はカメラフレームの通常RGB565順で
+  // high byte, low byte としてRGB888へ展開する。
+  return (static_cast<uint16_t>(p[0]) << 8) | p[1];
 }
 
 void rgb565ToRgb888(uint16_t c, uint8_t &r, uint8_t &g, uint8_t &b) {
@@ -270,7 +275,7 @@ void drawFrameToLcd(const camera_fb_t *fb) {
     const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
     for (int x = 0; x < LCD_WIDTH; ++x) {
       const int srcX = cropX + (x * cropW) / LCD_WIDTH;
-      lcdLine[x] = readRgb565(srcRow + srcX * 2);
+      lcdLine[x] = readRgb565ForLcd(srcRow + srcX * 2);
     }
     lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
   }
@@ -349,7 +354,7 @@ bool writeBmp24FromRgb565Frame(const camera_fb_t *fb, const char *path) {
     uint8_t *dst = row;
     for (uint32_t x = 0; x < width; ++x) {
       uint8_t r, g, b;
-      rgb565ToRgb888(readRgb565(src + x * 2), r, g, b);
+      rgb565ToRgb888(readRgb565ForBmp(src + x * 2), r, g, b);
       *dst++ = b;
       *dst++ = g;
       *dst++ = r;
