@@ -56,15 +56,14 @@ constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
 // 1x display crop derived from 2026-06-14 FOV measurement:
 // 150x300mm target at 1000mm occupied 48x95px in the 640x480 raw frame.
-// For a QXGA 2048x1536 frame, a 240x284 center crop can be drawn to the
-// 240x284 LCD without enlargement. This corresponds to about H=13.37deg /
-// V=15.95deg, or roughly 125mm eye distance for true 1x. At 150mm eye distance
-// this no-enlargement view is slightly wider than 1x, but avoids mosaic pixels.
-constexpr int LIVE_VIEW_CROP_WIDTH = 240;
-constexpr int LIVE_VIEW_CROP_HEIGHT = 284;
+// QXGA RGB565 caused runtime capture failures on the XIAO ESP32S3 Sense test
+// unit. UXGA keeps the 150mm-eye-distance 1x crop at about 158x185 source
+// pixels, reducing the VGA mosaic effect while staying more realistic for PSRAM.
+constexpr int LIVE_VIEW_CROP_WIDTH = 158;
+constexpr int LIVE_VIEW_CROP_HEIGHT = 185;
 
-// Use QXGA to keep enough source pixels in the heavy 1x crop.
-constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_QXGA;  // 2048x1536
+// Use UXGA as the first high-resolution live-view fallback after QXGA failure.
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA;  // 1600x1200
 constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
 constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
 
@@ -234,8 +233,8 @@ bool initCamera() {
   config.pixel_format = CAMERA_PIXEL_FORMAT;
   config.frame_size = CAMERA_FRAME_SIZE;
   config.jpeg_quality = JPEG_QUALITY_UNUSED_FOR_RGB565;
-  // QXGA RGB565 is about 6.3MB per frame. Keep a single frame buffer so the
-  // XIAO ESP32S3 Sense PSRAM is not exhausted by double buffering.
+  // UXGA RGB565 is about 3.8MB per frame. Keep a single frame buffer to reduce
+  // PSRAM pressure and avoid the QXGA-style capture failure.
   config.fb_count = 1;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
