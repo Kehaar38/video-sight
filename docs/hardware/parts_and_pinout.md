@@ -6,7 +6,8 @@ XIAO ESP32-S3 Sense
 ## カメラ
 XIAO ESP32-S3 Sense付属カメラ / OV3660
 - 最大解像度: 2048x1536
-- FOV詳細は未確定。`docs/hardware/bringup/camera_fov_snapshot.md` の手順で実測する。
+- VGA保存BMPでの実測FOV: 水平 約90.00° / 垂直 約74.32° (1m先の150x300mm差し金が48x95px)
+- 1倍ライブビュー初期クロップ: 中央157x185px。詳細は `docs/hardware/bringup/camera_fov_snapshot.md`。
 [Seeed Studio Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/#installation-of-expansion-boards-for-sense)
 
 ## ディスプレイ

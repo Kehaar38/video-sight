@@ -13,8 +13,8 @@
 // - SD: XIAO ESP32S3 Sense onboard microSD, CS GPIO21.
 //
 // The saved BMP is the camera-acquired frame size, before LCD crop/resize.
-// LCD live view crops the left/right sides of the 4:3 camera frame to match the
-// portrait LCD aspect ratio, then scales it to 240x284 for aiming/alignment.
+// LCD live view crops the center of the 4:3 camera frame to the measured 1x FOV,
+// then scales it to 240x284 for aiming/alignment.
 
 namespace pins {
 constexpr int WAKE_BUTTON = 1;
@@ -53,6 +53,14 @@ constexpr int LCD_HEIGHT = 284;
 constexpr int LCD_OFFSET_X = 0;
 constexpr int LCD_OFFSET_Y = 0;
 constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
+
+// 1x display crop derived from 2026-06-14 FOV measurement:
+// 150x300mm target at 1000mm occupied 48x95px in the 640x480 raw frame.
+// This gives raw-frame FOV of about H=90.0deg / V=74.3deg.  Cropping the
+// center to 157x185px gives about H=27.57deg / V=32.57deg, close to the
+// LCD apparent FOV at 60mm eye distance (H=27.64deg / V=32.46deg).
+constexpr int LIVE_VIEW_CROP_WIDTH = 157;
+constexpr int LIVE_VIEW_CROP_HEIGHT = 185;
 
 // Keep the camera frame 4:3 for FOV measurement. VGA is a good first bring-up
 // point: large enough for pixel measurement, small enough for live conversion.
@@ -266,12 +274,14 @@ void drawFrameToLcd(const camera_fb_t *fb) {
 
   const int srcW = fb->width;
   const int srcH = fb->height;
-  const int cropW = (srcH * LCD_WIDTH) / LCD_HEIGHT;
+  const int cropW = min(LIVE_VIEW_CROP_WIDTH, srcW);
+  const int cropH = min(LIVE_VIEW_CROP_HEIGHT, srcH);
   const int cropX = (srcW - cropW) / 2;
+  const int cropY = (srcH - cropH) / 2;
 
   lcd.startWrite();
   for (int y = 0; y < LCD_HEIGHT; ++y) {
-    const int srcY = (y * srcH) / LCD_HEIGHT;
+    const int srcY = cropY + (y * cropH) / LCD_HEIGHT;
     const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
     for (int x = 0; x < LCD_WIDTH; ++x) {
       const int srcX = cropX + (x * cropW) / LCD_WIDTH;
@@ -441,7 +451,7 @@ void setup() {
   Serial.println("========================================");
   Serial.println("VIDEO SIGHT - camera live view / FOV capture");
   Serial.println("Wake button: save current RGB565 camera frame as BMP to /fov");
-  Serial.println("LCD: center crop left/right to 240x284 portrait display");
+  Serial.println("LCD: center crop to measured 1x FOV, then scale to 240x284");
   Serial.println("========================================");
   Serial.printf("PSRAM found: %s size=%u\n", psramFound() ? "yes" : "no",
                 static_cast<unsigned>(ESP.getPsramSize()));
