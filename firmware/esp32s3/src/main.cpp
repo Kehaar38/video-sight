@@ -56,15 +56,15 @@ constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
 // 1x display crop derived from 2026-06-14 FOV measurement:
 // 150x300mm target at 1000mm occupied 48x95px in the 640x480 raw frame.
-// This gives raw-frame FOV of about H=90.0deg / V=74.3deg.  Cropping the
-// center to 63x74px gives about H=11.24deg / V=13.33deg, close to the
-// LCD apparent FOV at 150mm eye distance (H=11.24deg / V=13.28deg).
-constexpr int LIVE_VIEW_CROP_WIDTH = 63;
-constexpr int LIVE_VIEW_CROP_HEIGHT = 74;
+// For a QXGA 2048x1536 frame, a 240x284 center crop can be drawn to the
+// 240x284 LCD without enlargement. This corresponds to about H=13.37deg /
+// V=15.95deg, or roughly 125mm eye distance for true 1x. At 150mm eye distance
+// this no-enlargement view is slightly wider than 1x, but avoids mosaic pixels.
+constexpr int LIVE_VIEW_CROP_WIDTH = 240;
+constexpr int LIVE_VIEW_CROP_HEIGHT = 284;
 
-// Keep the camera frame 4:3 for FOV measurement. VGA is a good first bring-up
-// point: large enough for pixel measurement, small enough for live conversion.
-constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_VGA;  // 640x480
+// Use QXGA to keep enough source pixels in the heavy 1x crop.
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_QXGA;  // 2048x1536
 constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
 constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
 
@@ -234,7 +234,9 @@ bool initCamera() {
   config.pixel_format = CAMERA_PIXEL_FORMAT;
   config.frame_size = CAMERA_FRAME_SIZE;
   config.jpeg_quality = JPEG_QUALITY_UNUSED_FOR_RGB565;
-  config.fb_count = psramFound() ? 2 : 1;
+  // QXGA RGB565 is about 6.3MB per frame. Keep a single frame buffer so the
+  // XIAO ESP32S3 Sense PSRAM is not exhausted by double buffering.
+  config.fb_count = 1;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
 
