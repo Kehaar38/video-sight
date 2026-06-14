@@ -56,14 +56,14 @@ constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
 // 1x display crop derived from 2026-06-14 FOV measurement:
 // 150x300mm target at 1000mm occupied 48x95px in the 640x480 raw frame.
-// QXGA RGB565 caused runtime capture failures on the XIAO ESP32S3 Sense test
-// unit. UXGA keeps the 150mm-eye-distance 1x crop at about 158x185 source
-// pixels, reducing the VGA mosaic effect while staying more realistic for PSRAM.
-constexpr int LIVE_VIEW_CROP_WIDTH = 158;
-constexpr int LIVE_VIEW_CROP_HEIGHT = 185;
+// QXGA and UXGA RGB565 failed to capture on the XIAO ESP32S3 Sense. Use XGA as
+// the next trial: still denser than VGA, but much lighter than UXGA.
+constexpr int LIVE_VIEW_CROP_WIDTH = 101;
+constexpr int LIVE_VIEW_CROP_HEIGHT = 118;
 
-// Use UXGA as the first high-resolution live-view fallback after QXGA failure.
-constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA;  // 1600x1200
+// Use XGA to reduce VGA mosaic pixels while avoiding the high-res capture
+// failures seen at QXGA/UXGA.
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_XGA;  // 1024x768
 constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
 constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
 
