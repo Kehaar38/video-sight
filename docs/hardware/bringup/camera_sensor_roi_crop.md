@@ -137,9 +137,9 @@ sensor->set_res_raw(sensor,
 - `240x240` が成功した場合は、`320x320` ROIを取得してLCD中央の `240x284` を表示・保存する方法、または `240x284` パラメータの再調整を試す。
 - センサー側ROIが安定した場合、FOV確認用exampleにも同じ方式を応用し、LCD表示範囲または指定ROIだけを保存する。
 
-## 次の試行: 320x320 ROIから中央240x284表示
+## 失敗した追加試行: 320x320 ROIから中央240x284表示
 
-`240x240` ROIは実機で成功したため、次に `320x320` ROIを取得し、その中央 `240x284` だけをLCDへ等倍表示する。
+`240x240` ROIは実機で成功したため、次に `320x320` ROIを取得し、その中央 `240x284` だけをLCDへ等倍表示する試行を行った。
 
 ```text
 初期フレームサイズ: CIF 400x296
@@ -149,16 +149,37 @@ SD保存: 処理を簡単にするため、フレーム全体の320x320 BMP
 fb_count: 1
 ```
 
-CIFのRGB565バッファは `400x296x2 = 236800 bytes` で、320x320 RGB565の `204800 bytes` より大きいため、初期フレームサイズはCIFを使う。
+この設定でも、`set_res_raw()` 自体は成功したが、実フレーム配送時に `cam_task` のスタックカナリアで再起動した。
+
+```text
+ROI crop active: start=(848,608) end=(1199,939) output=320x320 scale=0 binning=0
+Camera ready: psram=yes fb_count=1 init_frame=CIF roi=320x320 lcd_crop=240x284
+Guru Meditation Error: Core 0 panic'ed (Unhandled debug exception).
+Debug exception reason: Stack canary watchpoint triggered (cam_task)
+```
+
+この結果から、`320x320` の非定型ROI出力も危険な設定として扱う。
+
+## 次の試行: CIF 400x296 ROIから中央240x284表示
+
+`240x240` は動作し、`240x284` と `320x320` は `cam_task` で落ちたため、次は定型サイズである `CIF 400x296` をセンサー側ROIとして出力する。
+
+```text
+初期フレームサイズ: CIF 400x296
+実出力: OV3660 set_res_raw() による 400x296
+LCD表示: 400x296の中央240x284を等倍表示
+SD保存: 処理を簡単にするため、フレーム全体の400x296 BMP
+fb_count: 1
+```
 
 ROIパラメータ:
 
 ```text
-start: 848,608
-end:   1199,939
+start: 824,620
+end:   1255,927
 offset: 16,6
-total: 2044,1564
-output: 320 x 320
+total: 2300,1564
+output: 400 x 296
 scale: false
 binning: false
 ```
@@ -166,7 +187,7 @@ binning: false
 LCD表示は中央を切り出す。
 
 ```text
-source: 320 x 320
-crop:   x=40, y=18, w=240, h=284
+source: 400 x 296
+crop:   x=80, y=6, w=240, h=284
 output: 240 x 284 LCDへ等倍表示
 ```

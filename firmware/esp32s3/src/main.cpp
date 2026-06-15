@@ -12,9 +12,9 @@
 // - Wake button: D0 / GPIO1, active LOW. Press to save the current camera frame to SD.
 // - SD: XIAO ESP32S3 Sense onboard microSD, CS GPIO21.
 //
-// The saved BMP is the camera-acquired frame size. In the current ROI trial,
-// the OV3660 is asked to output only the LCD-sized center window, so live view
-// and saved BMP should both be 240x284 without an ESP32-side large-frame crop.
+// The saved BMP is the camera-acquired ROI frame size. In the current ROI trial,
+// the OV3660 is asked to output only a small center window.  The LCD shows a
+// 240x284 center crop from that ROI without scaling.
 
 namespace pins {
 constexpr int WAKE_BUTTON = 1;
@@ -56,30 +56,30 @@ constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
 // Sensor-side ROI crop trial.  Instead of capturing a large frame and cropping
 // it in ESP32 memory, ask the OV3660 to output only a small center window.
-// The first 240x284 non-standard portrait ROI configured successfully, but the
-// camera task crashed before frames were delivered.  A 240x240 ROI worked.  Now
-// try a 320x320 sensor-side ROI, then show the center 240x284 area on the LCD
-// without scaling.  SD snapshots save the full 320x320 ROI because that is the
-// simplest path with the existing frame-save routine.
-constexpr int ROI_OUTPUT_WIDTH = 320;
-constexpr int ROI_OUTPUT_HEIGHT = 320;
+// Non-standard 240x284 and 320x320 ROI outputs configured successfully, but the
+// camera task crashed before frames were delivered.  A 240x240 ROI worked.
+// Next try the standard CIF output size (400x296), then show the center 240x284
+// area on the LCD without scaling.  SD snapshots save the full 400x296 ROI
+// because that is the simplest path with the existing frame-save routine.
+constexpr int ROI_OUTPUT_WIDTH = 400;
+constexpr int ROI_OUTPUT_HEIGHT = 296;
 constexpr int LIVE_VIEW_CROP_WIDTH = LCD_WIDTH;
 constexpr int LIVE_VIEW_CROP_HEIGHT = LCD_HEIGHT;
-constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_CIF;  // allocation >= 320x320 bytes
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_CIF;
 constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
 constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
 
-// OV3660 1:1 full-resolution timing from esp32-camera ratio_table uses a
-// 1536x1536 center-ish sensor window: start=(256,0), end=(1823,1547),
-// offset=(16,6), total=(2044,1564).  Center a 352x332 timing window inside it,
-// producing 320x320 after the 16/6 offsets are removed.
-constexpr int ROI_START_X = 848;
-constexpr int ROI_START_Y = 608;
-constexpr int ROI_END_X = 1199;
-constexpr int ROI_END_Y = 939;
+// OV3660 4:3 full-resolution timing from esp32-camera ratio_table uses
+// start=(0,0), end=(2079,1547), offset=(16,6), total=(2300,1564).
+// Center a 432x308 timing window, producing 400x296 after the offsets are
+// removed.  The LCD then uses the center 240x284 without scaling.
+constexpr int ROI_START_X = 824;
+constexpr int ROI_START_Y = 620;
+constexpr int ROI_END_X = 1255;
+constexpr int ROI_END_Y = 927;
 constexpr int ROI_OFFSET_X = 16;
 constexpr int ROI_OFFSET_Y = 6;
-constexpr int ROI_TOTAL_X = 2044;
+constexpr int ROI_TOTAL_X = 2300;
 constexpr int ROI_TOTAL_Y = 1564;
 constexpr bool ROI_SCALE = false;
 constexpr bool ROI_BINNING = false;
@@ -270,8 +270,8 @@ bool initCamera() {
   config.pixel_format = CAMERA_PIXEL_FORMAT;
   config.frame_size = CAMERA_FRAME_SIZE;
   config.jpeg_quality = JPEG_QUALITY_UNUSED_FOR_RGB565;
-  // The ROI output is 240x284 RGB565; one CIF-sized buffer is enough for the
-  // initial allocation and keeps PSRAM pressure low.
+  // The ROI output matches CIF dimensions, so the allocated frame buffer should
+  // match the sensor-side ROI output and keep PSRAM pressure low.
   config.fb_count = 1;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
@@ -515,7 +515,7 @@ void setup() {
   Serial.println("========================================");
   Serial.println("VIDEO SIGHT - camera live view / FOV capture");
   Serial.println("Wake button: save current RGB565 camera frame as BMP to /fov");
-  Serial.println("LCD: OV3660 sensor-side ROI 320x320, center 240x284 no-scale crop");
+  Serial.println("LCD: OV3660 sensor-side ROI CIF 400x296, center 240x284 no-scale crop");
   Serial.println("========================================");
   Serial.printf("PSRAM found: %s size=%u\n", psramFound() ? "yes" : "no",
                 static_cast<unsigned>(ESP.getPsramSize()));
