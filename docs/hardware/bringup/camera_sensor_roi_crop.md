@@ -11,7 +11,9 @@ LCDに表示しない高解像度フレーム全体をESP32側で保持せず、
 - QXGA/UXGA RGB565全体取得時の `capture failed` を避ける。
 - SD保存もLCD表示範囲だけにする。
 
-## 現在の試行設定
+## 失敗した設定
+
+最初に `240x284` の非標準・縦長ROIを試した。
 
 ```text
 初期フレームサイズ: CIF 400x296
@@ -22,27 +24,56 @@ SD保存: 240x284 BMP
 fb_count: 1
 ```
 
-初期フレームサイズをCIFにしている理由は、esp32-cameraのフレームバッファ確保が `config.frame_size` に依存するため。CIFのRGB565バッファは `400x296x2 = 236800 bytes` で、ROI出力 `240x284x2 = 136320 bytes` より大きい。
+この設定では、シリアル上は次の通り `set_res_raw()` 自体は成功した。
+
+```text
+ROI crop active: start=(904,626) end=(1175,921) output=240x284 scale=0 binning=0
+Camera ready: psram=yes fb_count=1 init_frame=CIF roi=240x284
+```
+
+しかし、その直後に `cam_task` のスタックカナリアで再起動した。
+
+```text
+Guru Meditation Error: Core 0 panic'ed (Unhandled debug exception).
+Debug exception reason: Stack canary watchpoint triggered (cam_task)
+```
+
+そのため、`240x284` の非標準ROIは現時点では危険な設定として扱う。
+
+## 現在の試行設定
+
+次の切り分けとして、ESP32 camera定型サイズにもある `240x240` の正方形ROIへ下げる。
+
+```text
+初期フレームサイズ: FRAMESIZE_240X240
+実出力: OV3660 set_res_raw() による 240x240
+Pixel format: RGB565
+LCD表示: 240x284 LCD中央に240x240を等倍表示、上下22pxは黒帯
+SD保存: 240x240 BMP
+fb_count: 1
+```
+
+この設定でライブビューが出れば、`set_res_raw()` による中心ROI出力そのものは使える可能性が高い。次に `320x320` や `240x284` 再調整へ進む。
 
 ## ROIパラメータ
 
-OV3660の4:3フル解像度設定は、esp32-cameraの `ratio_table` で次のようになっている。
+OV3660の1:1フル解像度設定は、esp32-cameraの `ratio_table` で次のようになっている。
 
 ```text
-max_width/max_height: 2048 x 1536
-sensor window: start=(0,0), end=(2079,1547)
+max_width/max_height: 1536 x 1536
+sensor window: start=(256,0), end=(1823,1547)
 offset: 16,6
-total: 2300,1564
+total: 2044,1564
 ```
 
-この試行では、フル解像度中央からLCDサイズ相当だけを取り出すため、ダミーマージンを含む `272x296` のタイミング窓を中央に置き、出力を `240x284` にしている。
+現在の試行では、この1:1中央領域の中にダミーマージンを含む `272x252` のタイミング窓を置き、出力を `240x240` にしている。
 
 ```text
-start: 904,626
-end:   1175,921
+start: 888,648
+end:   1159,899
 offset: 16,6
-total: 2300,1564
-output: 240 x 284
+total: 2044,1564
+output: 240 x 240
 scale: false
 binning: false
 ```
@@ -55,7 +86,7 @@ sensor->set_res_raw(sensor,
   ROI_END_X, ROI_END_Y,
   ROI_OFFSET_X, ROI_OFFSET_Y,
   ROI_TOTAL_X, ROI_TOTAL_Y,
-  LCD_WIDTH, LCD_HEIGHT,
+  ROI_OUTPUT_WIDTH, ROI_OUTPUT_HEIGHT,
   ROI_SCALE, ROI_BINNING
 );
 ```
@@ -65,15 +96,17 @@ sensor->set_res_raw(sensor,
 実機では次を確認する。
 
 1. `ROI crop active` がシリアルに出るか。
-2. `camera capture failed` にならずライブビューが表示されるか。
-3. `fb->width` / `fb->height` が期待通り `240x284` になるか。
-4. 色順がこれまで通り正常か。
-5. 画角が狭すぎる/広すぎる場合、ROI窓または出力サイズを調整する。
-6. Wakeボタンで保存されるBMPが `240x284` になっているか。
+2. `cam_task` のスタックカナリアで再起動しないか。
+3. `camera capture failed` にならずライブビューが表示されるか。
+4. `fb->width` / `fb->height` が期待通り `240x240` になるか。
+5. 色順がこれまで通り正常か。
+6. 画角が狭すぎる/広すぎる場合、ROI窓または出力サイズを調整する。
+7. Wakeボタンで保存されるBMPが `240x240` になっているか。
 
 ## 注意
 
 - `set_res_raw()` は定型 `set_framesize()` より低レベルの設定で、OV3660のレジスタ仕様・ドライバ実装に依存する。
-- `240x284` の非標準・縦長出力が受け付けられない可能性がある。
-- 失敗時は、まず `320x320` や `400x296` など定型サイズに近いROI出力へ戻して切り分ける。
+- `240x284` の非標準・縦長出力は `set_res_raw()` 成功後に `cam_task` が落ちた。
+- まず `240x240` の正方形ROIで、センサー側ROIの可否を切り分ける。
+- `240x240` が成功した場合は、`320x320` ROIを取得してLCD中央の `240x284` を表示・保存する方法、または `240x284` パラメータの再調整を試す。
 - センサー側ROIが安定した場合、FOV確認用exampleにも同じ方式を応用し、LCD表示範囲または指定ROIだけを保存する。

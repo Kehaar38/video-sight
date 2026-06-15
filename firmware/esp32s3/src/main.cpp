@@ -55,26 +55,30 @@ constexpr int LCD_OFFSET_Y = 0;
 constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
 // Sensor-side ROI crop trial.  Instead of capturing a large frame and cropping
-// it in ESP32 memory, ask the OV3660 to output only the LCD-sized center window.
-// The init frame size is CIF because its RGB565 buffer is large enough for
-// 240x284, then set_res_raw() overrides the sensor output to 240x284.
-constexpr int LIVE_VIEW_CROP_WIDTH = LCD_WIDTH;
-constexpr int LIVE_VIEW_CROP_HEIGHT = LCD_HEIGHT;
-constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_CIF;  // allocation >= 240x284
+// it in ESP32 memory, ask the OV3660 to output only a small center window.
+// The first 240x284 non-standard portrait ROI configured successfully, but the
+// camera task crashed before frames were delivered.  Step back to a safer
+// square 240x240 ROI that matches an ESP32 camera定型サイズ, then draw it
+// centered on the 240x284 LCD with 22px black bars above/below.
+constexpr int ROI_OUTPUT_WIDTH = 240;
+constexpr int ROI_OUTPUT_HEIGHT = 240;
+constexpr int LIVE_VIEW_CROP_WIDTH = ROI_OUTPUT_WIDTH;
+constexpr int LIVE_VIEW_CROP_HEIGHT = ROI_OUTPUT_HEIGHT;
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_240X240;
 constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
 constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
 
-// OV3660 4:3 full-resolution timing from esp32-camera ratio_table:
-// active output 2048x1536 uses sensor window 0..2079 / 0..1547 with offset 16/6.
-// For a 240x284 no-scale center crop, keep the same dummy margins and center a
-// 272x296 timing window, producing 240x284 after the 16/6 offsets are removed.
-constexpr int ROI_START_X = 904;
-constexpr int ROI_START_Y = 626;
-constexpr int ROI_END_X = 1175;
-constexpr int ROI_END_Y = 921;
+// OV3660 1:1 full-resolution timing from esp32-camera ratio_table uses a
+// 1536x1536 center-ish sensor window: start=(256,0), end=(1823,1547),
+// offset=(16,6), total=(2044,1564).  Center a 272x252 timing window inside it,
+// producing 240x240 after the 16/6 offsets are removed.
+constexpr int ROI_START_X = 888;
+constexpr int ROI_START_Y = 648;
+constexpr int ROI_END_X = 1159;
+constexpr int ROI_END_Y = 899;
 constexpr int ROI_OFFSET_X = 16;
 constexpr int ROI_OFFSET_Y = 6;
-constexpr int ROI_TOTAL_X = 2300;
+constexpr int ROI_TOTAL_X = 2044;
 constexpr int ROI_TOTAL_Y = 1564;
 constexpr bool ROI_SCALE = false;
 constexpr bool ROI_BINNING = false;
@@ -229,14 +233,14 @@ bool applySensorRoiCrop(sensor_t *sensor) {
 
   const int ret = sensor->set_res_raw(sensor, ROI_START_X, ROI_START_Y, ROI_END_X, ROI_END_Y,
                                       ROI_OFFSET_X, ROI_OFFSET_Y, ROI_TOTAL_X, ROI_TOTAL_Y,
-                                      LCD_WIDTH, LCD_HEIGHT, ROI_SCALE, ROI_BINNING);
+                                      ROI_OUTPUT_WIDTH, ROI_OUTPUT_HEIGHT, ROI_SCALE, ROI_BINNING);
   if (ret != 0) {
     Serial.printf("ROI crop failed: set_res_raw ret=%d\n", ret);
     return false;
   }
 
   Serial.printf("ROI crop active: start=(%d,%d) end=(%d,%d) output=%dx%d scale=%d binning=%d\n",
-                ROI_START_X, ROI_START_Y, ROI_END_X, ROI_END_Y, LCD_WIDTH, LCD_HEIGHT,
+                ROI_START_X, ROI_START_Y, ROI_END_X, ROI_END_Y, ROI_OUTPUT_WIDTH, ROI_OUTPUT_HEIGHT,
                 ROI_SCALE ? 1 : 0, ROI_BINNING ? 1 : 0);
   return true;
 }
@@ -292,8 +296,8 @@ bool initCamera() {
   sensor->set_vflip(sensor, 1);
   sensor->set_hmirror(sensor, 0);
 
-  Serial.printf("Camera ready: psram=%s fb_count=%d init_frame=CIF roi=%dx%d\n",
-                psramFound() ? "yes" : "no", config.fb_count, LCD_WIDTH, LCD_HEIGHT);
+  Serial.printf("Camera ready: psram=%s fb_count=%d init_frame=240x240 roi=%dx%d\n",
+                psramFound() ? "yes" : "no", config.fb_count, ROI_OUTPUT_WIDTH, ROI_OUTPUT_HEIGHT);
   return true;
 }
 
@@ -314,22 +318,40 @@ void drawFrameToLcd(const camera_fb_t *fb) {
 
   const int srcW = fb->width;
   const int srcH = fb->height;
-  const int cropW = min(LIVE_VIEW_CROP_WIDTH, srcW);
-  const int cropH = min(LIVE_VIEW_CROP_HEIGHT, srcH);
-  const int cropX = (srcW - cropW) / 2;
-  const int cropY = (srcH - cropH) / 2;
 
-  lcd.startWrite();
-  for (int y = 0; y < LCD_HEIGHT; ++y) {
-    const int srcY = cropY + (y * cropH) / LCD_HEIGHT;
-    const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
-    for (int x = 0; x < LCD_WIDTH; ++x) {
-      const int srcX = cropX + (x * cropW) / LCD_WIDTH;
-      lcdLine[x] = readRgb565ForLcd(srcRow + srcX * 2);
+  if (srcW == LCD_WIDTH && srcH <= LCD_HEIGHT) {
+    const int dstY = (LCD_HEIGHT - srcH) / 2;
+    lcd.startWrite();
+    if (dstY > 0) {
+      lcd.fillRect(0, 0, LCD_WIDTH, dstY, TFT_BLACK);
+      lcd.fillRect(0, dstY + srcH, LCD_WIDTH, LCD_HEIGHT - dstY - srcH, TFT_BLACK);
     }
-    lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
+    for (int y = 0; y < srcH; ++y) {
+      const uint8_t *srcRow = fb->buf + (y * srcW * 2);
+      for (int x = 0; x < LCD_WIDTH; ++x) {
+        lcdLine[x] = readRgb565ForLcd(srcRow + x * 2);
+      }
+      lcd.pushImage(0, dstY + y, LCD_WIDTH, 1, lcdLine);
+    }
+    lcd.endWrite();
+  } else {
+    const int cropW = min(LIVE_VIEW_CROP_WIDTH, srcW);
+    const int cropH = min(LIVE_VIEW_CROP_HEIGHT, srcH);
+    const int cropX = (srcW - cropW) / 2;
+    const int cropY = (srcH - cropH) / 2;
+
+    lcd.startWrite();
+    for (int y = 0; y < LCD_HEIGHT; ++y) {
+      const int srcY = cropY + (y * cropH) / LCD_HEIGHT;
+      const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
+      for (int x = 0; x < LCD_WIDTH; ++x) {
+        const int srcX = cropX + (x * cropW) / LCD_WIDTH;
+        lcdLine[x] = readRgb565ForLcd(srcRow + srcX * 2);
+      }
+      lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
+    }
+    lcd.endWrite();
   }
-  lcd.endWrite();
 
   // Simple safe-area and capture guide overlay. It is drawn after the frame so
   // the saved SD image remains raw camera data, not overlayed display data.
@@ -491,7 +513,7 @@ void setup() {
   Serial.println("========================================");
   Serial.println("VIDEO SIGHT - camera live view / FOV capture");
   Serial.println("Wake button: save current RGB565 camera frame as BMP to /fov");
-  Serial.println("LCD: OV3660 sensor-side ROI 240x284, no ESP32-side large crop");
+  Serial.println("LCD: OV3660 sensor-side ROI 240x240, centered on 240x284 LCD");
   Serial.println("========================================");
   Serial.printf("PSRAM found: %s size=%u\n", psramFound() ? "yes" : "no",
                 static_cast<unsigned>(ESP.getPsramSize()));
