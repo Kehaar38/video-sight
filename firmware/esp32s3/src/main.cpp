@@ -12,9 +12,9 @@
 // - Wake button: D0 / GPIO1, active LOW. Press to save the current camera frame to SD.
 // - SD: XIAO ESP32S3 Sense onboard microSD, CS GPIO21.
 //
-// The saved BMP is the camera-acquired frame size, before LCD crop/resize.
-// LCD live view crops the center of the 4:3 camera frame to the measured 1x FOV,
-// then scales it to 240x284 for aiming/alignment.
+// The saved BMP is the camera-acquired frame size. In the current ROI trial,
+// the OV3660 is asked to output only the LCD-sized center window, so live view
+// and saved BMP should both be 240x284 without an ESP32-side large-frame crop.
 
 namespace pins {
 constexpr int WAKE_BUTTON = 1;
@@ -54,18 +54,30 @@ constexpr int LCD_OFFSET_X = 0;
 constexpr int LCD_OFFSET_Y = 0;
 constexpr uint8_t LCD_PRODUCT_ROTATION = 0;
 
-// 1x display crop derived from 2026-06-14 FOV measurement:
-// 150x300mm target at 1000mm occupied 48x95px in the 640x480 raw frame.
-// QXGA and UXGA RGB565 failed to capture on the XIAO ESP32S3 Sense. Use XGA as
-// the next trial: still denser than VGA, but much lighter than UXGA.
-constexpr int LIVE_VIEW_CROP_WIDTH = 101;
-constexpr int LIVE_VIEW_CROP_HEIGHT = 118;
-
-// Use XGA to reduce VGA mosaic pixels while avoiding the high-res capture
-// failures seen at QXGA/UXGA.
-constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_XGA;  // 1024x768
+// Sensor-side ROI crop trial.  Instead of capturing a large frame and cropping
+// it in ESP32 memory, ask the OV3660 to output only the LCD-sized center window.
+// The init frame size is CIF because its RGB565 buffer is large enough for
+// 240x284, then set_res_raw() overrides the sensor output to 240x284.
+constexpr int LIVE_VIEW_CROP_WIDTH = LCD_WIDTH;
+constexpr int LIVE_VIEW_CROP_HEIGHT = LCD_HEIGHT;
+constexpr framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_CIF;  // allocation >= 240x284
 constexpr pixformat_t CAMERA_PIXEL_FORMAT = PIXFORMAT_RGB565;
 constexpr int JPEG_QUALITY_UNUSED_FOR_RGB565 = 12;
+
+// OV3660 4:3 full-resolution timing from esp32-camera ratio_table:
+// active output 2048x1536 uses sensor window 0..2079 / 0..1547 with offset 16/6.
+// For a 240x284 no-scale center crop, keep the same dummy margins and center a
+// 272x296 timing window, producing 240x284 after the 16/6 offsets are removed.
+constexpr int ROI_START_X = 904;
+constexpr int ROI_START_Y = 626;
+constexpr int ROI_END_X = 1175;
+constexpr int ROI_END_Y = 921;
+constexpr int ROI_OFFSET_X = 16;
+constexpr int ROI_OFFSET_Y = 6;
+constexpr int ROI_TOTAL_X = 2300;
+constexpr int ROI_TOTAL_Y = 1564;
+constexpr bool ROI_SCALE = false;
+constexpr bool ROI_BINNING = false;
 
 class VideoSightLcd : public lgfx::LGFX_Device {
   lgfx::Bus_SPI bus_;
@@ -209,6 +221,26 @@ bool initSd(bool remount = false) {
   return true;
 }
 
+bool applySensorRoiCrop(sensor_t *sensor) {
+  if (!sensor || !sensor->set_res_raw) {
+    Serial.println("ROI crop failed: set_res_raw unavailable");
+    return false;
+  }
+
+  const int ret = sensor->set_res_raw(sensor, ROI_START_X, ROI_START_Y, ROI_END_X, ROI_END_Y,
+                                      ROI_OFFSET_X, ROI_OFFSET_Y, ROI_TOTAL_X, ROI_TOTAL_Y,
+                                      LCD_WIDTH, LCD_HEIGHT, ROI_SCALE, ROI_BINNING);
+  if (ret != 0) {
+    Serial.printf("ROI crop failed: set_res_raw ret=%d\n", ret);
+    return false;
+  }
+
+  Serial.printf("ROI crop active: start=(%d,%d) end=(%d,%d) output=%dx%d scale=%d binning=%d\n",
+                ROI_START_X, ROI_START_Y, ROI_END_X, ROI_END_Y, LCD_WIDTH, LCD_HEIGHT,
+                ROI_SCALE ? 1 : 0, ROI_BINNING ? 1 : 0);
+  return true;
+}
+
 bool initCamera() {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -233,8 +265,8 @@ bool initCamera() {
   config.pixel_format = CAMERA_PIXEL_FORMAT;
   config.frame_size = CAMERA_FRAME_SIZE;
   config.jpeg_quality = JPEG_QUALITY_UNUSED_FOR_RGB565;
-  // UXGA RGB565 is about 3.8MB per frame. Keep a single frame buffer to reduce
-  // PSRAM pressure and avoid the QXGA-style capture failure.
+  // The ROI output is 240x284 RGB565; one CIF-sized buffer is enough for the
+  // initial allocation and keeps PSRAM pressure low.
   config.fb_count = 1;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
@@ -246,15 +278,22 @@ bool initCamera() {
   }
 
   sensor_t *sensor = esp_camera_sensor_get();
-  if (sensor) {
-    sensor->set_framesize(sensor, CAMERA_FRAME_SIZE);
-    // 実機確認で上下反転していたため、OV3660側で垂直反転を補正する。
-    sensor->set_vflip(sensor, 1);
-    sensor->set_hmirror(sensor, 0);
+  if (!sensor) {
+    Serial.println("esp_camera_sensor_get failed");
+    return false;
   }
 
-  Serial.printf("Camera ready: psram=%s fb_count=%d\n", psramFound() ? "yes" : "no",
-                config.fb_count);
+  sensor->set_framesize(sensor, CAMERA_FRAME_SIZE);
+  if (!applySensorRoiCrop(sensor)) {
+    return false;
+  }
+
+  // 実機確認で上下反転していたため、OV3660側で垂直反転を補正する。
+  sensor->set_vflip(sensor, 1);
+  sensor->set_hmirror(sensor, 0);
+
+  Serial.printf("Camera ready: psram=%s fb_count=%d init_frame=CIF roi=%dx%d\n",
+                psramFound() ? "yes" : "no", config.fb_count, LCD_WIDTH, LCD_HEIGHT);
   return true;
 }
 
@@ -452,7 +491,7 @@ void setup() {
   Serial.println("========================================");
   Serial.println("VIDEO SIGHT - camera live view / FOV capture");
   Serial.println("Wake button: save current RGB565 camera frame as BMP to /fov");
-  Serial.println("LCD: center crop to measured 1x FOV, then scale to 240x284");
+  Serial.println("LCD: OV3660 sensor-side ROI 240x284, no ESP32-side large crop");
   Serial.println("========================================");
   Serial.printf("PSRAM found: %s size=%u\n", psramFound() ? "yes" : "no",
                 static_cast<unsigned>(ESP.getPsramSize()));
