@@ -38,15 +38,21 @@ result: 240 x 284へ約2.4倍表示
 
 ## 操作
 
+FOV確認用の実機確認済みスケッチは、通常ファームから切り離して次のPlatformIO例へ退避している。
+
+```text
+firmware/esp32s3/examples/camera_fov_snapshot/
+```
+
 1. microSDカードを挿入する。
-2. ファームを書き込む。
+2. FOV確認例を書き込む。
 3. LCDにライブ画像が表示されることを確認する。
 4. FOV測定対象をカメラ正面に置く。
 5. Wakeボタンを押す。
 6. `/fov/` 配下にBMPが保存される。
 
 ```bash
-cd firmware/esp32s3
+cd firmware/esp32s3/examples/camera_fov_snapshot
 pio run
 pio run -t upload
 pio device monitor
