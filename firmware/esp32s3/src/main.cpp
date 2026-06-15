@@ -270,9 +270,9 @@ bool initCamera() {
   config.pixel_format = CAMERA_PIXEL_FORMAT;
   config.frame_size = CAMERA_FRAME_SIZE;
   config.jpeg_quality = JPEG_QUALITY_UNUSED_FOR_RGB565;
-  // The ROI output matches CIF dimensions, so the allocated frame buffer should
-  // match the sensor-side ROI output and keep PSRAM pressure low.
-  config.fb_count = 1;
+  // CIF-sized ROI is small enough for double buffering. This lets the camera
+  // capture the next frame while the current frame is being converted for LCD.
+  config.fb_count = psramFound() ? 2 : 1;
   config.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   config.grab_mode = CAMERA_GRAB_LATEST;
 
@@ -343,14 +343,26 @@ void drawFrameToLcd(const camera_fb_t *fb) {
     const int cropY = (srcH - cropH) / 2;
 
     lcd.startWrite();
-    for (int y = 0; y < LCD_HEIGHT; ++y) {
-      const int srcY = cropY + (y * cropH) / LCD_HEIGHT;
-      const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
-      for (int x = 0; x < LCD_WIDTH; ++x) {
-        const int srcX = cropX + (x * cropW) / LCD_WIDTH;
-        lcdLine[x] = readRgb565ForLcd(srcRow + srcX * 2);
+    if (cropW == LCD_WIDTH && cropH == LCD_HEIGHT) {
+      // No-scale center crop path for CIF 400x296 -> LCD 240x284. Avoid the
+      // per-pixel multiplication used by the generic scaler.
+      for (int y = 0; y < LCD_HEIGHT; ++y) {
+        const uint8_t *srcRow = fb->buf + ((cropY + y) * srcW + cropX) * 2;
+        for (int x = 0; x < LCD_WIDTH; ++x) {
+          lcdLine[x] = readRgb565ForLcd(srcRow + x * 2);
+        }
+        lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
       }
-      lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
+    } else {
+      for (int y = 0; y < LCD_HEIGHT; ++y) {
+        const int srcY = cropY + (y * cropH) / LCD_HEIGHT;
+        const uint8_t *srcRow = fb->buf + (srcY * srcW * 2);
+        for (int x = 0; x < LCD_WIDTH; ++x) {
+          const int srcX = cropX + (x * cropW) / LCD_WIDTH;
+          lcdLine[x] = readRgb565ForLcd(srcRow + srcX * 2);
+        }
+        lcd.pushImage(0, y, LCD_WIDTH, 1, lcdLine);
+      }
     }
     lcd.endWrite();
   }
